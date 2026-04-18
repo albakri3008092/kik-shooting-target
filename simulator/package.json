@@ -1,0 +1,16 @@
+{
+  "name": "kik-simulator",
+  "version": "1.0.0",
+  "description": "Browser-previewable simulator of the KIK central receiver.",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}

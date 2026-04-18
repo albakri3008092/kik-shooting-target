@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ms" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>KIK — Instructor</title>
+  <link rel="stylesheet" href="/css/main.css"/>
+</head>
+<body>
+<header class="appbar">
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#05121c" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="#05121c"/></svg>
+    </div>
+    <div><div class="title">Instructor</div><div class="subtitle">Pantau sasaran terpilih</div></div>
+  </div>
+  <div class="spacer"></div>
+  <div id="top-timer" class="timer">00:00.0</div>
+  <button id="btn-lang" class="icon-btn lang-pill"><span id="lang-label">MS</span></button>
+</header>
+
+<main style="padding:16px">
+  <div id="login" class="session-card" style="max-width:600px;margin:30px auto">
+    <h3>🎯 Log Masuk Jurulatih</h3>
+    <div class="row" style="margin:10px 0">
+      <label>Jumlah sasaran</label>
+      <select id="max-count">${[1,2,3,4,5].map(n=>`<option>${n}</option>`).join('')}</select>
+    </div>
+    <div id="picker" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:10px 0"></div>
+    <div class="row"><button class="primary-btn" id="start">Mula Pantau</button></div>
+  </div>
+  <div id="dash" style="display:none">
+    <div id="targets" class="grid"></div>
+  </div>
+</main>
+
+<script src="/js/i18n.js"></script>
+<script src="/js/ws.js"></script>
+<script>
+(function(){
+  let selected = [];
+  const picker = document.getElementById('picker');
+  for(let i=1;i<=15;i++){
+    const el = document.createElement('button');
+    el.className='ghost-btn'; el.textContent = 'T'+i;
+    el.onclick = () => {
+      const idx = selected.indexOf(i);
+      if(idx>=0){ selected.splice(idx,1); el.classList.remove('primary-btn'); el.classList.add('ghost-btn'); }
+      else {
+        const max = +document.getElementById('max-count').value;
+        if(selected.length >= max) return alert('Maks '+max);
+        selected.push(i); el.classList.add('primary-btn'); el.classList.remove('ghost-btn');
+      }
+    };
+    picker.appendChild(el);
+  }
+  document.getElementById('start').onclick = () => {
+    if(!selected.length) return alert('Pilih sasaran');
+    document.getElementById('login').style.display='none';
+    document.getElementById('dash').style.display='block';
+    const grid = document.getElementById('targets');
+    grid.innerHTML = selected.map(i=>`
+      <div class="target-card" id="t${i}">
+        <div class="tc-head"><div class="tc-title">T${i}</div><div class="score-pill" id="s${i}">0</div></div>
+        <div class="hitmap"><svg viewBox="-100 -100 200 200" style="width:100%;height:100%">
+          <circle r="85" cx="0" cy="0" fill="none" stroke="var(--ring-4)"/>
+          <circle r="60" cx="0" cy="0" fill="none" stroke="var(--ring-6)"/>
+          <circle r="36" cx="0" cy="0" fill="none" stroke="var(--ring-8)"/>
+          <circle r="14" cx="0" cy="0" fill="none" stroke="var(--ring-10)" stroke-width="2"/>
+          <g id="g${i}"></g>
+        </svg></div>
+        <div class="tc-foot">
+          <div class="sbox"><div class="sl">Hits</div><div class="sv" id="h${i}">0</div></div>
+          <div class="sbox"><div class="sl">Z10</div><div class="sv" id="z1-${i}">0</div></div>
+          <div class="sbox"><div class="sl">Z8</div><div class="sv" id="z2-${i}">0</div></div>
+          <div class="sbox"><div class="sl">Z6+4</div><div class="sv" id="z3-${i}">0</div></div>
+        </div>
+      </div>`).join('');
+    KIK_WS.connect('/instructor');
+  };
+  const st = {};
+  KIK_WS.on(m => {
+    if(m.type === 'hit' && selected.indexOf(m.target)>=0){
+      const t = m.target;
+      st[t] = st[t] || {hits:0,score:0,zones:[0,0,0,0]};
+      st[t].hits++; st[t].score += (m.score||0); if(m.zone>=1&&m.zone<=4) st[t].zones[m.zone-1]++;
+      document.getElementById('s'+t).textContent = st[t].score;
+      document.getElementById('h'+t).textContent = st[t].hits;
+      document.getElementById('z1-'+t).textContent = st[t].zones[0];
+      document.getElementById('z2-'+t).textContent = st[t].zones[1];
+      document.getElementById('z3-'+t).textContent = st[t].zones[2]+st[t].zones[3];
+      // dot
+      const ns='http://www.w3.org/2000/svg';
+      const dot = document.createElementNS(ns,'circle');
+      dot.setAttribute('cx', Math.max(-95,Math.min(95,(m.cx||0)/10)));
+      dot.setAttribute('cy', -Math.max(-95,Math.min(95,(m.cy||0)/10)));
+      dot.setAttribute('r', 4);
+      dot.setAttribute('fill', m.score>=10?'var(--ring-10)':m.score>=8?'var(--ring-8)':m.score>=6?'var(--ring-6)':'var(--ring-4)');
+      const g = document.getElementById('g'+t);
+      g.appendChild(dot); while(g.children.length>25) g.removeChild(g.firstChild);
+      const card = document.getElementById('t'+t); card.classList.add('hit-flash');
+      setTimeout(()=>card.classList.remove('hit-flash'), 400);
+    }
+  });
+  const syncLang = () => document.getElementById('lang-label').textContent = (window.KIK_LANG||'ms').toUpperCase();
+  document.getElementById('btn-lang').onclick = () => setLang(window.KIK_LANG==='ms'?'en':'ms');
+  window.addEventListener('langchange', syncLang); syncLang();
+})();
+</script>
+</body>
+</html>

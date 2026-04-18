@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ms" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>KIK — TV Mode</title>
+  <link rel="stylesheet" href="/css/main.css"/>
+</head>
+<body class="tv">
+
+<div class="tv-wrap">
+  <div class="tv-top">
+    <div class="tv-title" data-i="app_title">KIK Shooting Target</div>
+    <div id="tv-timer" class="tv-timer">00:00.0</div>
+  </div>
+  <div class="tv-grid" id="tv-grid"></div>
+  <div class="tv-foot" id="tv-foot"><span id="tv-shooter"></span> · <span id="tv-shots">0</span> shots</div>
+</div>
+
+<script src="/js/i18n.js"></script>
+<script src="/js/ws.js"></script>
+<script>
+(function(){
+  const N = 15;
+  const state = Array.from({length:N+1}, ()=>({online:false,score:0,hits:0}));
+  const grid = document.getElementById('tv-grid');
+  grid.innerHTML = Array.from({length:N}).map((_,i)=>{
+    const id=i+1;
+    return `<div class="tv-card" id="tv-${id}">
+      <div class="num">T${id}</div>
+      <div class="val" id="tv-val-${id}">0</div>
+      <div style="font-size:14px;color:var(--muted)"><span id="tv-hits-${id}">0</span> hits</div>
+    </div>`;
+  }).join('');
+  function render(){
+    let leader=0, max=-1;
+    for(let i=1;i<=N;i++){ if(state[i].score>max){max=state[i].score; leader=i;} }
+    for(let i=1;i<=N;i++){
+      const c = document.getElementById('tv-'+i);
+      c.classList.toggle('leading', i===leader && max>0);
+      document.getElementById('tv-val-'+i).textContent  = state[i].score;
+      document.getElementById('tv-hits-'+i).textContent = state[i].hits;
+    }
+  }
+  function flash(id){
+    const c = document.getElementById('tv-'+id); if(!c) return;
+    c.classList.remove('hit'); void c.offsetWidth; c.classList.add('hit');
+  }
+  function fmt(ms){
+    const s=Math.floor(ms/1000), cs=Math.floor((ms%1000)/100), m=Math.floor(s/60);
+    return String(m).padStart(2,'0')+':'+String(s%60).padStart(2,'0')+'.'+cs;
+  }
+  KIK_WS.on(m=>{
+    if(m.type==='hit'){
+      state[m.target].score = m.total||(state[m.target].score+(m.score||0));
+      state[m.target].hits += 1;
+      flash(m.target); render();
+      document.getElementById('tv-shots').textContent =
+        (+document.getElementById('tv-shots').textContent+1);
+    } else if(m.type==='health'){
+      state[m.target].online = m.online!==false;
+    } else if(m.type==='tick'){
+      document.getElementById('tv-timer').textContent = fmt(m.elapsed||0);
+    } else if(m.type==='reset'){
+      for(let i=1;i<=N;i++){ state[i].score=0; state[i].hits=0; }
+      document.getElementById('tv-shots').textContent='0';
+      document.getElementById('tv-timer').textContent='00:00.0';
+      render();
+    } else if(m.type==='session_start'){
+      document.getElementById('tv-shooter').textContent = m.shooter||m.name||'';
+    } else if(m.targets){
+      for(const o of m.targets){ state[o.id]={online:o.online,score:o.score||0,hits:(o.hits||[]).reduce((a,b)=>a+b,0)}; }
+      render();
+    }
+  });
+  KIK_WS.connect('/ws');
+})();
+</script>
+</body>
+</html>
