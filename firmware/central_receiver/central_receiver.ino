@@ -203,8 +203,15 @@ static void appendShotLog(const HitData& h) {
 
 // =======================================================================
 //  ESP-NOW receive
+//  ESP32 Arduino core 2.x vs 3.x have different recv-callback signatures.
+//  This shim keeps the sketch compilable on both.
 // =======================================================================
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+static void onDataReceived(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+  const uint8_t* mac = info->src_addr;
+#else
 static void onDataReceived(const uint8_t* mac, const uint8_t* data, int len) {
+#endif
   if (len < 1) return;
   uint8_t type = data[0];
 

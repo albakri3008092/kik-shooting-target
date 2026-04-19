@@ -7,8 +7,12 @@ on:
 
 jobs:
   firmware:
-    name: Compile firmware
+    name: Compile firmware (esp32 ${{ matrix.core }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ['2.0.17', '3.1.3']
     steps:
       - uses: actions/checkout@v4
       - name: Install arduino-cli
@@ -16,11 +20,11 @@ jobs:
           mkdir -p "$HOME/bin"
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/bin" sh
           echo "$HOME/bin" >> "$GITHUB_PATH"
-      - name: Install ESP32 core
+      - name: Install ESP32 core ${{ matrix.core }}
         run: |
           arduino-cli config init
           arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-          arduino-cli core install esp32:esp32@2.0.17 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core install esp32:esp32@${{ matrix.core }} --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
       - name: Install libraries
         run: |
           arduino-cli lib install "ArduinoJson"

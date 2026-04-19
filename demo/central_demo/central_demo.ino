@@ -275,8 +275,18 @@ setInterval(tick, 300); tick();
 
 // =====================================================================
 //  ESP-NOW receive callback
+//  The signature changed between ESP32 Arduino core 2.x and 3.x:
+//    2.x: void cb(const uint8_t* mac, const uint8_t* data, int len)
+//    3.x: void cb(const esp_now_recv_info_t* info, const uint8_t* data, int len)
+//  This shim lets the same sketch compile on both.
 // =====================================================================
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+  (void)info;
+#else
 static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
+  (void)mac;
+#endif
   if (len != (int)sizeof(HitPacket)) return;
   HitPacket p; memcpy(&p, data, sizeof(p));
   if (p.targetID < 1 || p.targetID > NUM_TARGETS) return;
