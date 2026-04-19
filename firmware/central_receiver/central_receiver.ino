@@ -50,7 +50,16 @@ static const uint8_t targetMACs[16][6] = {
 static const uint8_t  NUM_TARGETS       = 15;
 static const uint32_t HEALTH_TIMEOUT_MS = 15000;
 static const int      BUZZER_PIN        = 25;
-static const int      BUZZ_CH           = 0;
+static const int      BUZZ_CH           = 0;    // only used on core 2.x
+
+// ESP32 Arduino core 2.x vs 3.x LEDC API shim.
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  #define KIK_BUZZ_SETUP(pin, ch, f, res) ledcAttach((pin), (f), (res))
+  #define KIK_BUZZ_TONE(pin, ch, f)       ledcWriteTone((pin), (f))
+#else
+  #define KIK_BUZZ_SETUP(pin, ch, f, res) do { ledcSetup((ch), (f), (res)); ledcAttachPin((pin), (ch)); } while (0)
+  #define KIK_BUZZ_TONE(pin, ch, f)       ledcWriteTone((ch), (f))
+#endif
 static const char*    OTA_HOSTNAME      = "kik-central";
 static const char*    OTA_PASSWORD      = "kik-ota";
 static const char*    MDNS_NAME         = "kik";   // http://kik.local
@@ -183,7 +192,7 @@ static void broadcastCmd(uint8_t cmd, uint8_t targetID, const uint8_t* payload =
 // Non-blocking buzzer: we schedule a "buzz off" time and check it in loop().
 static uint32_t buzzOffAtMs = 0;
 static void buzz(uint32_t durationMs, uint16_t freqHz = 2000) {
-  ledcWriteTone(BUZZ_CH, freqHz);
+  KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, freqHz);
   buzzOffAtMs = millis() + durationMs;
 }
 
@@ -458,8 +467,7 @@ void setup() {
   delay(100);
 
   pinMode(BUZZER_PIN, OUTPUT);
-  ledcAttachPin(BUZZER_PIN, BUZZ_CH);
-  ledcSetup(BUZZ_CH, 2000, 10);
+  KIK_BUZZ_SETUP(BUZZER_PIN, BUZZ_CH, 2000, 10);
 
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS failed");
@@ -594,7 +602,7 @@ void loop() {
 
   // Turn buzzer off when scheduled
   if (buzzOffAtMs && now >= buzzOffAtMs) {
-    ledcWriteTone(BUZZ_CH, 0);
+    KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 0);
     buzzOffAtMs = 0;
   }
 
