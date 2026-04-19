@@ -32,6 +32,29 @@ jobs:
         run: arduino-cli compile --fqbn esp32:esp32:esp32 firmware/central_receiver
       - name: Compile get_mac
         run: arduino-cli compile --fqbn esp32:esp32:esp32 firmware/get_mac
+      - name: Compile demo/target_demo
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 demo/target_demo
+      - name: Compile demo/central_demo
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 demo/central_demo
+
+  demo:
+    name: Smoke-test demo dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Syntax check demo simulator
+        run: node --check demo/simulator.js
+      - name: Start demo preview and smoke test
+        run: |
+          node demo/simulator.js &
+          PID=$!
+          sleep 2
+          curl -fsS http://localhost:8081/ > /dev/null
+          curl -fsS http://localhost:8081/status | head -c 200
+          echo
+          kill $PID
 
   dashboard:
     name: Lint & syntax-check dashboard

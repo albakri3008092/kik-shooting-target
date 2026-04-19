@@ -1,12 +1,32 @@
-# KIK Shooting Target — v2
+# KIK Shooting Target
 
-Upgrade of the original KIK 15-target shooting system. Same hardware
-(15 × ESP32 + piezo targets, 1 × ESP32 central receiver, ESP-NOW Long-Range
-radio) — with a fully re-written firmware and a new full-colour dashboard.
+ESP32 + piezo shooting target system with a colourful WiFi dashboard.
+Two flavours in the same repo:
 
-![dashboard screenshot](docs/dashboard-preview.png)
+| | **Demo** (start here) | **Full v2** |
+|---|---|---|
+| Hardware | 1 central + **3 targets** | 1 central + **15 targets** |
+| External libraries | **none** (ESP32 core only) | ArduinoJson, AsyncTCP, ESPAsyncWebServer, LittleFS |
+| LittleFS data upload | **not needed** | required |
+| Features | Live hit count, score, bullseye dots, reset, buzzer | + sessions, PAR timer, shooter profiles, CSV/JSON export, TV mode, OTA, battery, RSSI, settings editor, PWA, BM/EN, dark/light |
+| Folder | [`demo/`](demo/) | [`firmware/`](firmware/) + [`dashboard/`](dashboard/) |
+| Setup guide | [demo/README.md](demo/README.md) | [docs/SETUP_MY.md](docs/SETUP_MY.md) / [docs/SETUP_EN.md](docs/SETUP_EN.md) |
 
-## What's new in v2
+**Recommended path:** get the demo working end-to-end first with 3 targets,
+then graduate to the full v2 system when you're ready.
+
+## Quick start — DEMO (3 targets, no libraries)
+
+```
+1. Arduino IDE → open demo/central_demo/central_demo.ino    → Upload (once)
+2. Arduino IDE → open demo/target_demo/target_demo.ino
+                 edit TARGET_ID + RECEIVER_MAC              → Upload × 3
+3. Phone → Wi-Fi "Target_System" / 12345678 → http://192.168.4.1/
+```
+
+Full guide: **[demo/README.md](demo/README.md)**.
+
+## What's new in v2 (full system)
 
 **Firmware**
 - Weighted-centroid zone detection from all 4 piezos (not just "first sensor").
