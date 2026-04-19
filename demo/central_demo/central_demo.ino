@@ -25,7 +25,18 @@
 static const char*  AP_SSID     = "Target_System";
 static const char*  AP_PASSWORD = "12345678";
 static const uint8_t BUZZER_PIN = 25;          // GND through a passive buzzer
-static const int     BUZZ_CH    = 0;           // LEDC channel
+static const int     BUZZ_CH    = 0;           // LEDC channel (only used on core 2.x)
+
+// ESP32 Arduino core 2.x vs 3.x LEDC API shim.
+// 2.x: ledcSetup(ch, f, res) + ledcAttachPin(pin, ch); ledcWriteTone(ch, f)
+// 3.x: ledcAttach(pin, f, res); ledcWriteTone(pin, f)
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  #define KIK_BUZZ_SETUP(pin, ch, f, res) ledcAttach((pin), (f), (res))
+  #define KIK_BUZZ_TONE(pin, ch, f)       ledcWriteTone((pin), (f))
+#else
+  #define KIK_BUZZ_SETUP(pin, ch, f, res) do { ledcSetup((ch), (f), (res)); ledcAttachPin((pin), (ch)); } while (0)
+  #define KIK_BUZZ_TONE(pin, ch, f)       ledcWriteTone((ch), (f))
+#endif
 
 #pragma pack(push, 1)
 struct HitPacket {            // MUST match target_demo.ino
@@ -275,8 +286,18 @@ setInterval(tick, 300); tick();
 
 // =====================================================================
 //  ESP-NOW receive callback
+//  The signature changed between ESP32 Arduino core 2.x and 3.x:
+//    2.x: void cb(const uint8_t* mac, const uint8_t* data, int len)
+//    3.x: void cb(const esp_now_recv_info_t* info, const uint8_t* data, int len)
+//  This shim lets the same sketch compile on both.
 // =====================================================================
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+  (void)info;
+#else
 static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
+  (void)mac;
+#endif
   if (len != (int)sizeof(HitPacket)) return;
   HitPacket p; memcpy(&p, data, sizeof(p));
   if (p.targetID < 1 || p.targetID > NUM_TARGETS) return;
@@ -339,9 +360,8 @@ static void handleReset() {
 void setup() {
   Serial.begin(115200);
   pinMode(BUZZER_PIN, OUTPUT);
-  ledcSetup(BUZZ_CH, 2500, 10);
-  ledcAttachPin(BUZZER_PIN, BUZZ_CH);
-  ledcWriteTone(BUZZ_CH, 0);
+  KIK_BUZZ_SETUP(BUZZER_PIN, BUZZ_CH, 2500, 10);
+  KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 0);
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASSWORD);
@@ -382,11 +402,11 @@ void loop() {
   static uint32_t buzzOff = 0;
   if (gHitPending) {
     gHitPending = false;
-    ledcWriteTone(BUZZ_CH, 2500);
+    KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 2500);
     buzzOff = now + 40;
   }
   if (buzzOff && now >= buzzOff) {
-    ledcWriteTone(BUZZ_CH, 0);
+    KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 0);
     buzzOff = 0;
   }
 }

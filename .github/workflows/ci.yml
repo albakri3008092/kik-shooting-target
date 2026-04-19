@@ -6,8 +6,11 @@ on:
   pull_request:
 
 jobs:
-  firmware:
-    name: Compile firmware
+  # Full v2 firmware uses ESPAsyncWebServer (me-no-dev) which only compiles
+  # on ESP32 Arduino core 2.x. Keep a dedicated job pinned to 2.0.17 until
+  # we migrate to the maintained ESP32Async fork.
+  firmware-v2:
+    name: Compile full v2 firmware (esp32 2.0.17)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,11 +19,11 @@ jobs:
           mkdir -p "$HOME/bin"
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/bin" sh
           echo "$HOME/bin" >> "$GITHUB_PATH"
-      - name: Install ESP32 core
+      - name: Install ESP32 core 2.0.17
         run: |
           arduino-cli config init
           arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-          arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core install esp32:esp32@2.0.17 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
       - name: Install libraries
         run: |
           arduino-cli lib install "ArduinoJson"
@@ -32,6 +35,29 @@ jobs:
         run: arduino-cli compile --fqbn esp32:esp32:esp32 firmware/central_receiver
       - name: Compile get_mac
         run: arduino-cli compile --fqbn esp32:esp32:esp32 firmware/get_mac
+
+  # The simple demo sketches only use built-in WebServer.h, so we verify
+  # they compile on BOTH core 2.x (legacy) and 3.x (what the Arduino IDE
+  # Boards Manager now offers by default).
+  demo-firmware:
+    name: Compile demo sketches (esp32 ${{ matrix.core }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ['2.0.17', '3.1.3']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install arduino-cli
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/bin" sh
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Install ESP32 core ${{ matrix.core }}
+        run: |
+          arduino-cli config init
+          arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core install esp32:esp32@${{ matrix.core }} --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
       - name: Compile demo/target_demo
         run: arduino-cli compile --fqbn esp32:esp32:esp32 demo/target_demo
       - name: Compile demo/central_demo
