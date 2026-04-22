@@ -385,6 +385,8 @@ void setup() {
   esp_wifi_set_protocol(WIFI_IF_STA,
       WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G |
       WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
+  // Lock STA ke channel 1 supaya padan softAP pusat.
+  esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW init failed"); while (1) delay(500);
@@ -393,7 +395,7 @@ void setup() {
 
   esp_now_peer_info_t peer = {};
   memcpy(peer.peer_addr, RECEIVER_MAC, 6);
-  peer.channel = 0; peer.encrypt = false;
+  peer.channel = 1; peer.encrypt = false;
   if (!esp_now_is_peer_exist(RECEIVER_MAC)) esp_now_add_peer(&peer);
 
   Serial.printf("Target %u ready. MAC=%s\n", TARGET_ID, WiFi.macAddress().c_str());

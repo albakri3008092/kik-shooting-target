@@ -520,8 +520,9 @@ void setup() {
   KIK_BUZZ_SETUP(BUZZER_PIN, BUZZ_CH, 2500, 10);
   KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 0);
 
+  // AP on a fixed channel so ESP-NOW peers on STA side can match us.
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  WiFi.softAP(AP_SSID, AP_PASSWORD, /*channel=*/1);
   IPAddress ip = WiFi.softAPIP();
 
   esp_wifi_set_protocol(WIFI_IF_AP,
@@ -540,7 +541,10 @@ void setup() {
   server.begin();
 
   Serial.println("\nKIK Central DEMO ready.");
-  Serial.printf("MAC:      %s\n", WiFi.macAddress().c_str());
+  // This is the AP MAC — it is what each target must put into
+  // RECEIVER_MAC[] in target_demo.ino for ESP-NOW to reach us.
+  Serial.printf("MAC:      %s   <-- paste this into target_demo RECEIVER_MAC\n",
+                WiFi.softAPmacAddress().c_str());
   Serial.printf("AP SSID:  %s\n", AP_SSID);
   Serial.printf("AP IP:    %s\n", ip.toString().c_str());
   Serial.println("Open http://192.168.4.1/ on your phone.");
