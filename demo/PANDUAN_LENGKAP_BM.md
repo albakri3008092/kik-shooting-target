@@ -393,9 +393,9 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   esp_wifi_set_ps(WIFI_PS_NONE);
+  // B/G/N sahaja (tanpa LR) supaya AP pusat visible kepada telefon biasa.
   esp_wifi_set_protocol(WIFI_IF_STA,
-      WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G |
-      WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
+      WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
   // Lock STA ke channel 1 supaya padan softAP pusat.
   esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
 

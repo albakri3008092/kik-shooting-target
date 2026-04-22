@@ -67,9 +67,10 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   esp_wifi_set_ps(WIFI_PS_NONE);
+  // Match central: B/G/N only (drop LR so ESP-NOW stays compatible
+  // with the non-LR central AP).
   esp_wifi_set_protocol(WIFI_IF_STA,
-      WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G |
-      WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
+      WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
   // Lock STA to channel 1 to match central's softAP channel.
   esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
 

@@ -525,9 +525,11 @@ void setup() {
   WiFi.softAP(AP_SSID, AP_PASSWORD, /*channel=*/1);
   IPAddress ip = WiFi.softAPIP();
 
+  // Do NOT include WIFI_PROTOCOL_LR here — LR beacons are invisible to
+  // standard phones/tablets, so the Target_System AP would not appear
+  // in WiFi scan lists.
   esp_wifi_set_protocol(WIFI_IF_AP,
-      WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G |
-      WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
+      WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW init failed"); while (1) delay(500);
