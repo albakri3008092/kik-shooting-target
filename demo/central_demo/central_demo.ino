@@ -56,11 +56,26 @@ struct TargetState {
   uint32_t lastHitMs  = 0;
   uint16_t hitCount   = 0;
   uint16_t score      = 0;
-  uint16_t zoneHits[4] = {0, 0, 0, 0};    // Z10, Z8, Z6, Z4
+  uint16_t zoneHits[4] = {0, 0, 0, 0};    // Z10, Z8, Z6, Z4 (== S1..S4)
   uint16_t lastAmp    = 0;
-  uint8_t  lastSensor = 0;
+  uint8_t  lastSensor = 0;            // 1..4 of the piezo that detected
 };
 static TargetState T[NUM_TARGETS + 1];    // index 1..NUM_TARGETS
+
+// Rolling log of the last RECENT_N hits across all targets. The tablet
+// shows these as "Tembakan Terkini" so the audience can see exactly
+// which sensor on which target caught each bullet, in order.
+#define RECENT_N 16
+struct RecentHit {
+  uint32_t ts;        // millis() at capture
+  uint8_t  targetID;
+  uint8_t  sensorID;  // 1..4
+  uint8_t  zone;      // 1..4 (== sensorID in this demo)
+  uint8_t  score;     // 10 / 8 / 6 / 4
+};
+static RecentHit recentBuf[RECENT_N] = {};
+static uint8_t   recentHead = 0;     // next slot to write
+static uint16_t  recentCount = 0;    // total hits since boot (caps the view)
 
 static WebServer server(80);
 static volatile bool  gHitPending = false;
@@ -137,19 +152,56 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
     background:linear-gradient(135deg,var(--d),#d13458);color:#fff;padding:4px 12px;
     border-radius:999px;font-weight:800;font-size:16px;
   }
+  .lsens{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    background:var(--surf2);border:1px solid var(--bd);border-radius:10px;
+    padding:8px 10px;margin-bottom:10px;
+  }
+  .lsens .k{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px}
+  .lsens .v{
+    font-size:22px;font-weight:900;letter-spacing:.5px;
+    padding:2px 10px;border-radius:8px;background:#0b1221;color:var(--mut);
+  }
+  .lsens .v.s1{color:#05121c;background:var(--r10)}
+  .lsens .v.s2{color:#05121c;background:var(--r8)}
+  .lsens .v.s3{color:#05121c;background:var(--r6)}
+  .lsens .v.s4{color:#05121c;background:var(--r4)}
+  .lsens .ago{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
   .bull{aspect-ratio:1;background:radial-gradient(circle at 50% 50%,var(--surf2),var(--surf));border-radius:12px;margin-bottom:10px;overflow:hidden}
   .bull svg{width:100%;height:100%;display:block}
   .bull .dot{filter:drop-shadow(0 0 6px currentColor);animation:pop .3s ease}
   .zones{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-  .z{background:var(--surf2);border-radius:8px;padding:6px 4px;text-align:center}
-  .z .k{font-size:10px;color:var(--mut)}
-  .z .n{font-size:18px;font-weight:900}
-  .z.z10{border-top:3px solid var(--r10)} .z.z10 .n{color:var(--r10)}
-  .z.z8 {border-top:3px solid var(--r8) } .z.z8 .n{color:var(--r8)}
-  .z.z6 {border-top:3px solid var(--r6) } .z.z6 .n{color:var(--r6)}
-  .z.z4 {border-top:3px solid var(--r4) } .z.z4 .n{color:var(--r4)}
+  .z{background:var(--surf2);border-radius:8px;padding:6px 4px;text-align:center;transition:.15s}
+  .z .s{font-size:12px;font-weight:900;letter-spacing:.4px}
+  .z .k{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+  .z .n{font-size:20px;font-weight:900;font-variant-numeric:tabular-nums;margin-top:2px}
+  .z.z10{border-top:3px solid var(--r10)} .z.z10 .n,.z.z10 .s{color:var(--r10)}
+  .z.z8 {border-top:3px solid var(--r8) } .z.z8 .n, .z.z8 .s{color:var(--r8)}
+  .z.z6 {border-top:3px solid var(--r6) } .z.z6 .n, .z.z6 .s{color:var(--r6)}
+  .z.z4 {border-top:3px solid var(--r4) } .z.z4 .n, .z.z4 .s{color:var(--r4)}
+  .z.flash{transform:scale(1.08);box-shadow:0 0 0 2px currentColor,0 0 16px currentColor}
+  .feed{
+    margin-top:14px;background:var(--surf);border:1px solid var(--bd);
+    border-radius:14px;padding:14px;
+  }
+  .feed h2{font-size:14px;margin-bottom:10px;letter-spacing:.4px}
+  .feed ul{list-style:none;display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto}
+  .feed li{
+    display:grid;grid-template-columns:40px 60px 1fr auto auto;gap:10px;align-items:center;
+    background:var(--surf2);border-radius:10px;padding:8px 10px;font-size:13px;
+    animation:slide .25s ease;
+  }
+  .feed .t{font-weight:900;color:var(--i)}
+  .feed .s{font-weight:900;padding:2px 8px;border-radius:6px;color:#05121c;text-align:center}
+  .feed .s.s1{background:var(--r10)} .feed .s.s2{background:var(--r8)}
+  .feed .s.s3{background:var(--r6)}  .feed .s.s4{background:var(--r4)}
+  .feed .z{color:var(--mut)}
+  .feed .sc{font-weight:900;color:var(--p);font-variant-numeric:tabular-nums}
+  .feed .ago{color:var(--mut);font-size:11px;font-variant-numeric:tabular-nums;min-width:42px;text-align:right}
+  .feed .empty{color:var(--mut);text-align:center;padding:18px;font-style:italic}
   footer{margin-top:18px;text-align:center;color:var(--mut);font-size:12px}
   @keyframes pop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.3);opacity:1}100%{transform:scale(1)}}
+  @keyframes slide{from{transform:translateY(-6px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
 </head>
 <body>
@@ -203,18 +255,74 @@ grid.innerHTML = Array.from({length:N}).map((_,i)=>{
   return `<div class="tc off" id="tc${id}">
     <div class="head"><div class="ttl">🎯 Sasaran ${id}</div><div class="pill" id="pill${id}">0</div></div>
     <div class="bull">${bull(id)}</div>
+    <div class="lsens">
+      <div><div class="k">Sensor Terakhir</div></div>
+      <div class="v" id="ls${id}">—</div>
+      <div class="ago" id="lsa${id}">—</div>
+    </div>
     <div class="zones">
-      <div class="z z10"><div class="k">Zon 10</div><div class="n" id="z10-${id}">0</div></div>
-      <div class="z z8"><div class="k">Zon 8</div> <div class="n" id="z8-${id}">0</div></div>
-      <div class="z z6"><div class="k">Zon 6</div> <div class="n" id="z6-${id}">0</div></div>
-      <div class="z z4"><div class="k">Zon 4</div> <div class="n" id="z4-${id}">0</div></div>
+      <div class="z z10" id="zc1-${id}"><div class="s">S1</div><div class="k">Zon 10</div><div class="n" id="z10-${id}">0</div></div>
+      <div class="z z8"  id="zc2-${id}"><div class="s">S2</div><div class="k">Zon 8</div> <div class="n" id="z8-${id}">0</div></div>
+      <div class="z z6"  id="zc3-${id}"><div class="s">S3</div><div class="k">Zon 6</div> <div class="n" id="z6-${id}">0</div></div>
+      <div class="z z4"  id="zc4-${id}"><div class="s">S4</div><div class="k">Zon 4</div> <div class="n" id="z4-${id}">0</div></div>
     </div>
   </div>`;
 }).join('');
 
+// Feed container appended once after the grid.
+const feed = document.createElement('section');
+feed.className = 'feed';
+feed.innerHTML = '<h2>🔴 Tembakan Terkini</h2><ul id="feedList"><li class="empty">Belum ada tembakan — tembak sasaran untuk mula</li></ul>';
+grid.parentNode.insertBefore(feed, grid.nextSibling);
+const feedList = document.getElementById('feedList');
+
 const prev = Array(N+1).fill(0);
 const zonePos = {1:[-55,-55], 2:[55,-55], 3:[-55,55], 4:[55,55]};
 const zoneColors = {1:'var(--r10)',2:'var(--r8)',3:'var(--r6)',4:'var(--r4)'};
+const zoneLabels = {1:'Zon 10',2:'Zon 8',3:'Zon 6',4:'Zon 4'};
+
+function fmtAgo(ms){
+  if(ms == null) return '—';
+  if(ms < 1000) return 'baru';
+  const s = Math.floor(ms/1000);
+  if(s < 60) return s+'s';
+  const m = Math.floor(s/60);
+  if(m < 60) return m+'m';
+  return Math.floor(m/60)+'j';
+}
+function flashZone(tid, sensor){
+  const el = document.getElementById('zc'+sensor+'-'+tid);
+  if(!el) return;
+  el.classList.add('flash');
+  setTimeout(()=>el.classList.remove('flash'), 450);
+}
+let feedKey = '';
+function renderFeed(recent){
+  if(!Array.isArray(recent) || recent.length === 0){
+    if(feedList.firstElementChild && feedList.firstElementChild.classList.contains('empty')) return;
+    feedList.innerHTML = '<li class="empty">Belum ada tembakan — tembak sasaran untuk mula</li>';
+    feedKey = '';
+    return;
+  }
+  const key = recent.map(r => r.t+':'+r.s+':'+r.ago).join('|');
+  if(key === feedKey){
+    // Just refresh "ago" text without rebuilding
+    [...feedList.children].forEach((li, i)=>{
+      const r = recent[i]; if(!r) return;
+      const a = li.querySelector('.ago'); if(a) a.textContent = fmtAgo(r.ago);
+    });
+    return;
+  }
+  feedKey = key;
+  feedList.innerHTML = recent.map(r => `
+    <li>
+      <span class="t">T${r.t}</span>
+      <span class="s s${r.s}">S${r.s}</span>
+      <span class="z">${zoneLabels[r.z]||('Zon '+r.z)}</span>
+      <span class="sc">+${r.sc}</span>
+      <span class="ago">${fmtAgo(r.ago)}</span>
+    </li>`).join('');
+}
 
 function placeDot(id, zone){
   const g = document.getElementById('g'+id); if(!g) return;
@@ -254,17 +362,33 @@ async function tick(){
       document.getElementById('z8-'+i).textContent  = (t.zones||[0,0])[1]||0;
       document.getElementById('z6-'+i).textContent  = (t.zones||[0,0,0])[2]||0;
       document.getElementById('z4-'+i).textContent  = (t.zones||[0,0,0,0])[3]||0;
+      const ls = document.getElementById('ls'+i);
+      const lsa = document.getElementById('lsa'+i);
+      if(ls){
+        ls.classList.remove('s1','s2','s3','s4');
+        if(t.lastSensor && t.lastSensor>=1 && t.lastSensor<=4){
+          ls.textContent = 'S'+t.lastSensor;
+          ls.classList.add('s'+t.lastSensor);
+          if(lsa) lsa.textContent = fmtAgo(t.ago);
+        } else {
+          ls.textContent = '—';
+          if(lsa) lsa.textContent = '—';
+        }
+      }
       hits  += t.hits||0;
       score += t.score||0;
       if((t.hits||0) > prev[i]){
-        for(let k=prev[i];k<(t.hits||0);k++) placeDot(i, t.lastZone||1);
+        const s = t.lastSensor || t.lastZone || 1;
+        for(let k=prev[i];k<(t.hits||0);k++) placeDot(i, s);
         flash(i);
+        flashZone(i, s);
       }
       prev[i] = t.hits||0;
     }
     document.getElementById('sh').textContent = hits;
     document.getElementById('ss').textContent = score;
     document.getElementById('sa').textContent = active+'/'+N;
+    renderFeed(d.recent || []);
   }catch(e){
     document.getElementById('dot').classList.remove('on');
     document.getElementById('conn').textContent = 'Terputus';
@@ -277,6 +401,8 @@ async function resetAll(){
     const g = document.getElementById('g'+i); if(g) g.innerHTML='';
     prev[i] = 0;
   }
+  feedKey = '';
+  renderFeed([]);
 }
 setInterval(tick, 300); tick();
 </script>
@@ -311,6 +437,14 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
     t.lastSensor = p.sensorID;
     t.lastAmp    = p.amp;
     t.lastHitMs  = millis();
+    RecentHit& r = recentBuf[recentHead];
+    r.ts       = t.lastHitMs;
+    r.targetID = p.targetID;
+    r.sensorID = p.sensorID;
+    r.zone     = p.zone;
+    r.score    = p.score;
+    recentHead = (recentHead + 1) % RECENT_N;
+    if (recentCount < 0xFFFF) recentCount++;
     gHitPending = true;         // trigger buzzer in loop()
   }
 }
@@ -341,7 +475,25 @@ static void handleStatus() {
     j += ",\"ago\":";         j += (uint32_t)(t.lastHitMs ? (millis() - t.lastHitMs) : 0);
     j += "}";
   }
-  j += "]}";
+  j += "]";
+  // Append recent-hits feed (newest first)
+  j += ",\"recent\":[";
+  uint16_t shown = recentCount < RECENT_N ? recentCount : RECENT_N;
+  uint32_t now = millis();
+  for (uint16_t k = 0; k < shown; k++) {
+    uint8_t idx = (uint8_t)((recentHead + RECENT_N - 1 - k) % RECENT_N);
+    const RecentHit& r = recentBuf[idx];
+    if (k) j += ",";
+    j += "{\"t\":";  j += r.targetID;
+    j += ",\"s\":";  j += r.sensorID;
+    j += ",\"z\":";  j += r.zone;
+    j += ",\"sc\":"; j += r.score;
+    j += ",\"ago\":"; j += (uint32_t)(now - r.ts);
+    j += "}";
+  }
+  j += "]";
+  j += ",\"totalHits\":"; j += recentCount;
+  j += "}";
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", j);
 }
@@ -350,7 +502,12 @@ static void handleReset() {
     T[i].hitCount = 0; T[i].score = 0;
     for (int z = 0; z < 4; z++) T[i].zoneHits[z] = 0;
     T[i].lastHitMs = 0;
+    T[i].lastSensor = 0;
+    T[i].lastAmp = 0;
   }
+  for (uint8_t k = 0; k < RECENT_N; k++) recentBuf[k] = RecentHit{};
+  recentHead = 0;
+  recentCount = 0;
   server.send(200, "application/json", "{\"ok\":true}");
 }
 
