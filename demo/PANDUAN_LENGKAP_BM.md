@@ -345,11 +345,17 @@ Sketsa **sama** untuk 3 sasaran. Cuma **2 baris perlu ubah** setiap kali flash.
 static uint8_t RECEIVER_MAC[6] = { 0xA0, 0xB7, 0x65, 0x00, 0x00, 0x00 };
 // ---------------------------------------------------------
 
-// Pendawaian piezo: satu piezo per GPIO, 1 MΩ pull-down ke GND.
-static const uint8_t  PIEZO_PINS[4] = { 32, 33, 34, 35 };
-static const uint16_t THRESHOLD     = 1500;   // Ambang ADC untuk detect hit
-static const uint16_t DEBOUNCE_MS   = 150;    // Debounce per sensor
-static const uint16_t HB_INTERVAL   = 5000;   // Heartbeat setiap 5 s
+// Pendawaian piezo: satu piezo per GPIO.
+//   Lebih baik: 1 MΩ pull-down ke GND setiap pin.
+//   Demo fallback (tanpa perintang): INPUT_PULLDOWN pada GPIO 32/33
+//   + baseline tracking dalam perisian untuk GPIO 34/35.
+static const uint8_t  PIEZO_PINS[4]    = { 32, 33, 34, 35 };
+static const bool     PIEZO_HASPULL[4] = { true, true, false, false };
+static const uint16_t TRIG_DELTA       = 2000;  // trigger bila sample > baseline + delta
+static const uint16_t DEBOUNCE_MS      = 250;   // Debounce per sensor
+static const uint16_t HB_INTERVAL      = 5000;  // Heartbeat setiap 5 s
+static const uint16_t BASELINE_SEED    = 150;   // baseline awal (ADC)
+static const uint8_t  BASELINE_SHIFT   = 5;     // EMA shift (baseline lambat ikut)
 
 // Skor zon per sensor (S1=10, S2=8, S3=6, S4=4).
 static const uint8_t ZONE_SCORES[4] = { 10, 8, 6, 4 };
@@ -367,7 +373,9 @@ struct HitPacket {
 #pragma pack(pop)
 
 static uint16_t hitTotal = 0;
-static uint32_t lastFired[4] = {0, 0, 0, 0};
+static uint32_t lastFired[4]  = {0, 0, 0, 0};
+static uint16_t baseline[4]   = {BASELINE_SEED, BASELINE_SEED,
+                                 BASELINE_SEED, BASELINE_SEED};
 static uint32_t lastHeartbeat = 0;
 
 static void onSent(const uint8_t* /*mac*/, esp_now_send_status_t status) {
@@ -378,7 +386,10 @@ void setup() {
   Serial.begin(115200);
   pinMode(2, OUTPUT);
   analogReadResolution(12);
-  for (int i = 0; i < 4; i++) pinMode(PIEZO_PINS[i], INPUT);
+  for (int i = 0; i < 4; i++) {
+    // GPIO 32, 33 support internal pulldown; 34, 35 are input-only.
+    pinMode(PIEZO_PINS[i], PIEZO_HASPULL[i] ? INPUT_PULLDOWN : INPUT);
+  }
 
   WiFi.mode(WIFI_STA);
   esp_wifi_set_ps(WIFI_PS_NONE);
@@ -430,8 +441,13 @@ void loop() {
   uint16_t peak = 0;
   for (int i = 0; i < 4; i++) {
     uint16_t v = analogRead(PIEZO_PINS[i]);
-    if (v > THRESHOLD && (now - lastFired[i]) > DEBOUNCE_MS) {
+    uint16_t bl = baseline[i];
+    uint16_t trig = bl + TRIG_DELTA;
+    if (v > trig && (now - lastFired[i]) > DEBOUNCE_MS) {
       if (v > peak) { peak = v; triggered = i; }
+    } else {
+      baseline[i] = (uint16_t)(((uint32_t)bl * ((1u << BASELINE_SHIFT) - 1) + v)
+                               >> BASELINE_SHIFT);
     }
   }
   if (triggered >= 0) {
