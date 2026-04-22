@@ -24,7 +24,8 @@ static uint8_t RECEIVER_MAC[6] = { 0xA0, 0xB7, 0x65, 0x00, 0x00, 0x00 };
 //   tracking for GPIO 34/35 (input-only pins with no internal pull).
 static const uint8_t  PIEZO_PINS[4]  = { 32, 33, 34, 35 };
 static const bool     PIEZO_HASPULL[4] = { true, true, false, false };
-static const uint16_t TRIG_DELTA     = 2000;  // trigger when sample > baseline + delta
+static const uint16_t TRIG_DELTA     = 800;   // trigger when sample > baseline + delta
+static const uint16_t BASELINE_MAX   = 1500;  // clamp baseline so trig stays reachable
 static const uint16_t DEBOUNCE_MS    = 250;   // per-sensor debounce
 static const uint16_t HB_INTERVAL    = 5000;  // heartbeat every 5 s
 static const uint16_t HEALTH_INTERVAL = 2000; // per-sensor health every 2 s
@@ -146,9 +147,12 @@ void loop() {
     uint16_t v = analogRead(PIEZO_PINS[i]);
     if (v > peakWindow[i]) peakWindow[i] = v;   // track max for health report
     // Rising-above-baseline detection (auto-compensates for drift &
-    // pin-floating on GPIO 34/35 without hardware pull-down).
+    // pin-floating on GPIO 34/35 without hardware pull-down). Clamp the
+    // baseline used for triggering so a drifting floating pin can't push
+    // the trigger threshold above the 12-bit ADC ceiling (4095).
     uint16_t bl = baseline[i];
-    uint16_t trig = bl + TRIG_DELTA;
+    uint16_t blc = bl > BASELINE_MAX ? BASELINE_MAX : bl;
+    uint16_t trig = blc + TRIG_DELTA;
     if (v > trig && (now - lastFired[i]) > DEBOUNCE_MS) {
       if (v > peak) { peak = v; triggered = i; }
     } else {
