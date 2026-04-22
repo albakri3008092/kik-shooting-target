@@ -84,6 +84,56 @@
 
 > 💡 **Tiada library luar diperlukan** untuk demo ini. Semua guna pustaka dalaman ESP32.
 
+### ⚠️ PENTING — Struktur folder Arduino (WAJIB BACA)
+
+Arduino IDE ada 2 peraturan ketat yang **selalu buat pemula tersilap**:
+
+1. **Setiap sketsa mesti dalam folder berasingan, dan nama folder mesti PADAN dengan nama file (tanpa `.ino`).**
+
+   ✅ **BETUL:**
+   ```
+   Documents\Arduino\
+   ├── get_mac\
+   │   └── get_mac.ino
+   ├── target_demo\
+   │   └── target_demo.ino
+   └── central_demo\
+       └── central_demo.ino
+   ```
+
+   ❌ **SALAH** (Arduino akan buat fail jadi `.ino.ino`):
+   ```
+   Documents\Arduino\
+   └── get_mac.ino\            ← folder TIDAK BOLEH ada ".ino"
+       └── get_mac.ino.ino     ← akibatnya nama fail double ".ino"
+   ```
+
+2. **Sebelum tampal kod, KOSONGKAN editor dulu.**
+
+   Kalau awak paste tanpa kosongkan, kod baru akan ditambah di belakang
+   kod lama → akan ada **2 `void setup()`** dan **2 `void loop()`** →
+   compile error `redefinition of 'void setup()'`.
+
+   Langkah paste yang betul:
+   ```
+   Klik dalam editor → Ctrl+A (select all) → Delete (kosongkan)
+                     → Ctrl+V (tampal kod baru)
+   ```
+
+### Cara cipta sketsa baru yang betul
+
+1. `File → New Sketch` (BUKAN "New" biasa — pastikan "New **Sketch**").
+2. `File → Save As…`
+3. Nama fail: taip **tanpa `.ino`** — contoh `get_mac`, bukan `get_mac.ino`.
+4. Arduino IDE akan cipta folder `get_mac\` dan fail `get_mac.ino` automatik.
+5. Sekarang **Ctrl+A → Delete** untuk kosongkan kod contoh yang IDE letak.
+6. **Ctrl+V** untuk tampal kod dari panduan ini.
+7. `Ctrl+S` untuk simpan.
+
+> 💡 Kalau awak terlanjur buat folder yang salah (seperti `get_mac.ino\`),
+> tutup Arduino IDE → buka Windows Explorer → padam folder yang salah →
+> buat semula ikut langkah 1-7 di atas.
+
 ---
 
 ## 🔌 Pendawaian setiap sasaran (4 piezo)
@@ -171,8 +221,10 @@ Kita perlu **MAC** pusat supaya sasaran tahu kepada siapa nak hantar data.
 
 ### 1.1 Flash sketsa `get_mac` ke **setiap** ESP32 (4 kali)
 
-1. Buka Arduino IDE → `File → New`
-2. **COPY kod di bawah, PASTE dalam window baru:**
+1. Arduino IDE → `File → New Sketch`.
+2. `File → Save As…` → nama fail **`get_mac`** (tanpa `.ino`) → Save. Ini cipta folder `Documents\Arduino\get_mac\get_mac.ino`.
+3. **Klik dalam editor → `Ctrl+A` → `Delete`** (KOSONGKAN kod contoh).
+4. Salin (`Ctrl+C`) kod di bawah dan **tampal (`Ctrl+V`) dalam editor yang kosong:**
 
 ```cpp
 // =====================================================================
@@ -198,19 +250,20 @@ void setup() {
 void loop() {}
 ```
 
-3. Simpan (`Ctrl+S`) sebagai `get_mac.ino`.
-4. Cucuk ESP32 pertama ke USB laptop.
-5. `Tools → Port → COM#` (port yang muncul baru).
-6. Klik **→** (Upload). Tunggu "Done uploading".
-7. `Tools → Serial Monitor` (baud **115200**).
-8. Tekan butang **EN** (reset) pada ESP32.
-9. Catat MAC yang dipaparkan, contoh:
-   ```
-   MAC Address: A0:B7:65:12:34:56
-   ```
-10. Tampal pelekat pada board → tulis `Pusat A0:B7:65:12:34:56`.
+5. `Ctrl+S` (simpan).
+6. Cucuk ESP32 pertama ke USB laptop.
+7. `Tools → Port → COM#` (port yang muncul baru).
+8. Klik **→** (Upload). Tunggu "Done uploading".
+9. `Tools → Serial Monitor` (baud **115200**).
+10. Tekan butang **EN** (reset) pada ESP32.
+11. Catat MAC yang dipaparkan, contoh:
+    ```
+    MAC Address: A0:B7:65:12:34:56
+    ```
+12. Tampal pelekat pada board → tulis `Pusat A0:B7:65:12:34:56`.
 
-**Ulang langkah 4-10 untuk 3 ESP32 sasaran** → label T1 / T2 / T3.
+**Ulang langkah 6-12 untuk 3 ESP32 sasaran** → label T1 / T2 / T3.
+(Tak perlu buat folder baru — sketsa sama, cuma cucuk board berlainan.)
 
 ### 1.2 Susun 4 MAC dalam jadual
 
@@ -266,7 +319,12 @@ Cabut ESP32 pusat — tak perlu sentuh lagi.
 
 Sketsa **sama** untuk 3 sasaran. Cuma **2 baris perlu ubah** setiap kali flash.
 
-### 3.1 COPY kod sasaran — tampal dalam Arduino IDE
+### 3.1 Cipta folder sketsa baru `target_demo`
+
+1. Arduino IDE → `File → New Sketch`.
+2. `File → Save As…` → nama fail **`target_demo`** (tanpa `.ino`) → Save. Ini cipta folder `Documents\Arduino\target_demo\target_demo.ino`.
+3. **Klik dalam editor → `Ctrl+A` → `Delete`** (KOSONGKAN kod contoh yang IDE letak automatik).
+4. Salin kod di bawah dan **tampal (`Ctrl+V`) dalam editor yang kosong**:
 
 ```cpp
 // =====================================================================
