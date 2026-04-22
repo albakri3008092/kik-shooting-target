@@ -18,8 +18,18 @@ const HTML = m[1];
 const NUM_TARGETS = 3;
 const RECENT_N = 16;
 
-const state = Array.from({length: NUM_TARGETS}, () => ({
+const state = Array.from({length: NUM_TARGETS}, (_, i) => ({
   online: true, hits: 0, score: 0, zones: [0, 0, 0, 0], lastSensor: 0, lastHitMs: 0,
+  // Per-sensor telemetry. Simulate a mix so the demo shows OK / NOISY / BROKEN.
+  //   Target 0: all OK
+  //   Target 1: S3 noisy
+  //   Target 2: S4 broken (blinking red)
+  sensors: [
+    { bl: 60,  pk: 90,  h: 'ok' },
+    { bl: 70,  pk: 85,  h: 'ok' },
+    { bl: i === 1 ? 1600 : 55, pk: i === 1 ? 1900 : 80, h: i === 1 ? 'noisy' : 'ok' },
+    { bl: i === 2 ? 3600 : 65, pk: i === 2 ? 4000 : 75, h: i === 2 ? 'broken' : 'ok' },
+  ],
 }));
 const recent = [];           // newest first
 const SCORES = [10, 8, 6, 4];
@@ -59,6 +69,8 @@ http.createServer((req, res) => {
         id: i + 1, online: s.online, hits: s.hits, score: s.score,
         zones: s.zones, lastSensor: s.lastSensor, lastZone: s.lastSensor,
         lastAmp: 2000, ago: s.lastHitMs ? now - s.lastHitMs : 0,
+        healthAge: 500,
+        sensors: s.sensors,
       })),
       recent: recent.map(r => ({
         t: r.t, s: r.s, z: r.z, sc: r.sc, ago: now - r.ts,

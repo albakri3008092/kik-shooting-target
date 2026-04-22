@@ -48,6 +48,12 @@ struct HitPacket {            // MUST match target_demo.ino
   uint16_t total;
   uint16_t amp;
 };
+struct HealthPacket {         // MUST match target_demo.ino
+  uint8_t  type;              // 3 = health
+  uint8_t  targetID;
+  uint16_t baseline[4];
+  uint16_t peak[4];
+};
 #pragma pack(pop)
 
 struct TargetState {
@@ -59,6 +65,10 @@ struct TargetState {
   uint16_t zoneHits[4] = {0, 0, 0, 0};    // Z10, Z8, Z6, Z4 (== S1..S4)
   uint16_t lastAmp    = 0;
   uint8_t  lastSensor = 0;            // 1..4 of the piezo that detected
+  // Per-sensor live telemetry (from HealthPacket, updated every ~2 s).
+  uint32_t lastHealthMs = 0;          // when we last received telemetry
+  uint16_t baseline[4]  = {0, 0, 0, 0};
+  uint16_t peak[4]      = {0, 0, 0, 0};
 };
 static TargetState T[NUM_TARGETS + 1];    // index 1..NUM_TARGETS
 
@@ -180,6 +190,21 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
   .z.z6 {border-top:3px solid var(--r6) } .z.z6 .n, .z.z6 .s{color:var(--r6)}
   .z.z4 {border-top:3px solid var(--r4) } .z.z4 .n, .z.z4 .s{color:var(--r4)}
   .z.flash{transform:scale(1.08);box-shadow:0 0 0 2px currentColor,0 0 16px currentColor}
+  .z .hp{
+    display:inline-flex;align-items:center;gap:3px;
+    font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
+    margin-top:3px;padding:1px 5px;border-radius:999px;
+    background:rgba(255,255,255,.05);color:var(--mut);
+  }
+  .z .hp::before{
+    content:"";width:6px;height:6px;border-radius:50%;background:currentColor;
+    box-shadow:0 0 4px currentColor;
+  }
+  .z .hp.ok     {color:var(--p)}
+  .z .hp.noisy  {color:var(--w)}
+  .z .hp.broken {color:var(--d);animation:blink 1s steps(2) infinite}
+  .z .hp.unknown{color:var(--mut)}
+  @keyframes blink{50%{opacity:.35}}
   .feed{
     margin-top:14px;background:var(--surf);border:1px solid var(--bd);
     border-radius:14px;padding:14px;
@@ -261,10 +286,10 @@ grid.innerHTML = Array.from({length:N}).map((_,i)=>{
       <div class="ago" id="lsa${id}">—</div>
     </div>
     <div class="zones">
-      <div class="z z10" id="zc1-${id}"><div class="s">S1</div><div class="k">Zon 10</div><div class="n" id="z10-${id}">0</div></div>
-      <div class="z z8"  id="zc2-${id}"><div class="s">S2</div><div class="k">Zon 8</div> <div class="n" id="z8-${id}">0</div></div>
-      <div class="z z6"  id="zc3-${id}"><div class="s">S3</div><div class="k">Zon 6</div> <div class="n" id="z6-${id}">0</div></div>
-      <div class="z z4"  id="zc4-${id}"><div class="s">S4</div><div class="k">Zon 4</div> <div class="n" id="z4-${id}">0</div></div>
+      <div class="z z10" id="zc1-${id}"><div class="s">S1</div><div class="k">Zon 10</div><div class="n" id="z10-${id}">0</div><div class="hp unknown" id="hp1-${id}">?</div></div>
+      <div class="z z8"  id="zc2-${id}"><div class="s">S2</div><div class="k">Zon 8</div> <div class="n" id="z8-${id}">0</div><div class="hp unknown" id="hp2-${id}">?</div></div>
+      <div class="z z6"  id="zc3-${id}"><div class="s">S3</div><div class="k">Zon 6</div> <div class="n" id="z6-${id}">0</div><div class="hp unknown" id="hp3-${id}">?</div></div>
+      <div class="z z4"  id="zc4-${id}"><div class="s">S4</div><div class="k">Zon 4</div> <div class="n" id="z4-${id}">0</div><div class="hp unknown" id="hp4-${id}">?</div></div>
     </div>
   </div>`;
 }).join('');
@@ -362,6 +387,19 @@ async function tick(){
       document.getElementById('z8-'+i).textContent  = (t.zones||[0,0])[1]||0;
       document.getElementById('z6-'+i).textContent  = (t.zones||[0,0,0])[2]||0;
       document.getElementById('z4-'+i).textContent  = (t.zones||[0,0,0,0])[3]||0;
+      // Per-sensor health badges (OK / NOISY / ROSAK / ?)
+      const sensors = Array.isArray(t.sensors) ? t.sensors : [];
+      const healthLabel = {ok:'OK', noisy:'NOISY', broken:'ROSAK', unknown:'?'};
+      for(let s=1; s<=4; s++){
+        const hp = document.getElementById('hp'+s+'-'+i);
+        if(!hp) continue;
+        const sd = sensors[s-1] || {};
+        const h = (t.online && sd.h) ? sd.h : 'unknown';
+        hp.classList.remove('ok','noisy','broken','unknown');
+        hp.classList.add(h);
+        hp.textContent = healthLabel[h] || '?';
+        hp.title = 'baseline='+(sd.bl||0)+'  peak='+(sd.pk||0);
+      }
       const ls = document.getElementById('ls'+i);
       const lsa = document.getElementById('lsa'+i);
       if(ls){
@@ -424,10 +462,29 @@ static void onEspNow(const esp_now_recv_info_t* info, const uint8_t* data, int l
 static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
   (void)mac;
 #endif
+  // Dispatch by first byte (packet type). HitPacket and HealthPacket have
+  // different sizes; discriminate before copying so we don't read past buf.
+  if (len < 2) return;
+  const uint8_t ptype = data[0];
+  const uint8_t tid   = data[1];
+  if (tid < 1 || tid > NUM_TARGETS) return;
+  TargetState& t = T[tid];
+
+  if (ptype == 3) {
+    if (len != (int)sizeof(HealthPacket)) return;
+    HealthPacket h; memcpy(&h, data, sizeof(h));
+    t.online       = true;
+    t.lastSeen     = millis();
+    t.lastHealthMs = millis();
+    for (int i = 0; i < 4; i++) {
+      t.baseline[i] = h.baseline[i];
+      t.peak[i]     = h.peak[i];
+    }
+    return;
+  }
+
   if (len != (int)sizeof(HitPacket)) return;
   HitPacket p; memcpy(&p, data, sizeof(p));
-  if (p.targetID < 1 || p.targetID > NUM_TARGETS) return;
-  TargetState& t = T[p.targetID];
   t.online   = true;
   t.lastSeen = millis();
   if (p.type == 1) {
@@ -473,6 +530,26 @@ static void handleStatus() {
     j += ",\"lastZone\":";    j += t.lastSensor;    // demo: zone == sensor
     j += ",\"lastAmp\":";     j += t.lastAmp;
     j += ",\"ago\":";         j += (uint32_t)(t.lastHitMs ? (millis() - t.lastHitMs) : 0);
+    // Per-sensor health telemetry. If we haven't heard a HealthPacket in a
+    // while (>8 s) we report "unknown" so stale data doesn't lie.
+    uint32_t healthAge = t.lastHealthMs ? (millis() - t.lastHealthMs) : 0xFFFFFFFFu;
+    bool haveHealth = t.lastHealthMs && healthAge < 8000;
+    j += ",\"healthAge\":"; j += (uint32_t)healthAge;
+    j += ",\"sensors\":[";
+    for (int s = 0; s < 4; s++) {
+      if (s) j += ",";
+      uint16_t bl = t.baseline[s];
+      uint16_t pk = t.peak[s];
+      const char* status;
+      if (!haveHealth)      status = "unknown";
+      else if (bl >= 3000)  status = "broken";   // pegged high: short / damaged
+      else if (bl >= 1000)  status = "noisy";    // wandering baseline
+      else                  status = "ok";
+      j += "{\"bl\":"; j += bl;
+      j += ",\"pk\":"; j += pk;
+      j += ",\"h\":\""; j += status; j += "\"}";
+    }
+    j += "]";
     j += "}";
   }
   j += "]";

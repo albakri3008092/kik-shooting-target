@@ -27,6 +27,7 @@ static const bool     PIEZO_HASPULL[4] = { true, true, false, false };
 static const uint16_t TRIG_DELTA     = 2000;  // trigger when sample > baseline + delta
 static const uint16_t DEBOUNCE_MS    = 250;   // per-sensor debounce
 static const uint16_t HB_INTERVAL    = 5000;  // heartbeat every 5 s
+static const uint16_t HEALTH_INTERVAL = 2000; // per-sensor health every 2 s
 static const uint16_t BASELINE_SEED  = 150;   // initial baseline (adc counts)
 static const uint8_t  BASELINE_SHIFT = 5;     // EMA: new = old*(2^s-1)/2^s + sample/2^s
 
@@ -43,13 +44,24 @@ struct HitPacket {
   uint16_t total;       // cumulative hits on this target (demo-only)
   uint16_t amp;         // amplitude of first-triggering piezo
 };
+
+// Per-sensor health: baseline and running-peak for all 4 piezos.
+// Central classifies health from these (see handleEspNow in central).
+struct HealthPacket {
+  uint8_t  type;        // 3 = health
+  uint8_t  targetID;
+  uint16_t baseline[4]; // current EMA baseline (ADC counts)
+  uint16_t peak[4];     // max sample observed since last health send
+};
 #pragma pack(pop)
 
 static uint16_t hitTotal = 0;
 static uint32_t lastFired[4]  = {0, 0, 0, 0};
 static uint16_t baseline[4]   = {BASELINE_SEED, BASELINE_SEED,
                                  BASELINE_SEED, BASELINE_SEED};
+static uint16_t peakWindow[4] = {0, 0, 0, 0};  // peak since last health send
 static uint32_t lastHeartbeat = 0;
+static uint32_t lastHealth    = 0;
 
 static void onSent(const uint8_t* /*mac*/, esp_now_send_status_t status) {
   // Blink built-in LED (GPIO2) on success
@@ -109,6 +121,22 @@ static void sendHeartbeat() {
   esp_now_send(RECEIVER_MAC, (const uint8_t*)&p, sizeof(p));
 }
 
+static void sendHealth() {
+  HealthPacket h{};
+  h.type     = 3;
+  h.targetID = TARGET_ID;
+  for (int i = 0; i < 4; i++) {
+    h.baseline[i] = baseline[i];
+    h.peak[i]     = peakWindow[i];
+    peakWindow[i] = 0;                 // reset window
+  }
+  esp_now_send(RECEIVER_MAC, (const uint8_t*)&h, sizeof(h));
+  Serial.printf("Health T=%u bl=[%u,%u,%u,%u] peak=[%u,%u,%u,%u]\n",
+                TARGET_ID,
+                h.baseline[0], h.baseline[1], h.baseline[2], h.baseline[3],
+                h.peak[0], h.peak[1], h.peak[2], h.peak[3]);
+}
+
 void loop() {
   uint32_t now = millis();
 
@@ -116,6 +144,7 @@ void loop() {
   uint16_t peak = 0;
   for (int i = 0; i < 4; i++) {
     uint16_t v = analogRead(PIEZO_PINS[i]);
+    if (v > peakWindow[i]) peakWindow[i] = v;   // track max for health report
     // Rising-above-baseline detection (auto-compensates for drift &
     // pin-floating on GPIO 34/35 without hardware pull-down).
     uint16_t bl = baseline[i];
@@ -137,5 +166,9 @@ void loop() {
   if (now - lastHeartbeat > HB_INTERVAL) {
     lastHeartbeat = now;
     sendHeartbeat();
+  }
+  if (now - lastHealth > HEALTH_INTERVAL) {
+    lastHealth = now;
+    sendHealth();
   }
 }
