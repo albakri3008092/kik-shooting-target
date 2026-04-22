@@ -25,6 +25,7 @@ static uint8_t RECEIVER_MAC[6] = { 0xA0, 0xB7, 0x65, 0x00, 0x00, 0x00 };
 static const uint8_t  PIEZO_PINS[4]  = { 32, 33, 34, 35 };
 static const bool     PIEZO_HASPULL[4] = { true, true, false, false };
 static const uint16_t TRIG_DELTA     = 800;   // trigger when sample > baseline + delta
+static const uint16_t FAST_RISE      = 600;   // minimum single-step jump to count as hit
 static const uint16_t BASELINE_MAX   = 1500;  // clamp baseline so trig stays reachable
 static const uint16_t DEBOUNCE_MS    = 250;   // per-sensor debounce
 static const uint16_t HB_INTERVAL    = 5000;  // heartbeat every 5 s
@@ -61,6 +62,7 @@ static uint32_t lastFired[4]  = {0, 0, 0, 0};
 static uint16_t baseline[4]   = {BASELINE_SEED, BASELINE_SEED,
                                  BASELINE_SEED, BASELINE_SEED};
 static uint16_t peakWindow[4] = {0, 0, 0, 0};  // peak since last health send
+static uint16_t prevSample[4] = {0, 0, 0, 0};  // previous ADC sample (for rising-edge)
 static uint32_t lastHeartbeat = 0;
 static uint32_t lastHealth    = 0;
 
@@ -146,21 +148,28 @@ void loop() {
   for (int i = 0; i < 4; i++) {
     uint16_t v = analogRead(PIEZO_PINS[i]);
     if (v > peakWindow[i]) peakWindow[i] = v;   // track max for health report
-    // Rising-above-baseline detection (auto-compensates for drift &
-    // pin-floating on GPIO 34/35 without hardware pull-down). Clamp the
-    // baseline used for triggering so a drifting floating pin can't push
-    // the trigger threshold above the 12-bit ADC ceiling (4095).
+    // Hit detection combines TWO conditions to reject noise on pins that
+    // float (GPIO 34/35 without hardware pull-down):
+    //   (a) absolute:  sample > (clamped baseline) + TRIG_DELTA
+    //   (b) rising:    sample - prevSample > FAST_RISE
+    // A floating pin drifts slowly — it may satisfy (a) but not (b). A
+    // real piezo strike produces a sharp millisecond-scale spike, which
+    // easily satisfies both.
     uint16_t bl = baseline[i];
     uint16_t blc = bl > BASELINE_MAX ? BASELINE_MAX : bl;
     uint16_t trig = blc + TRIG_DELTA;
-    if (v > trig && (now - lastFired[i]) > DEBOUNCE_MS) {
+    int32_t  rise = (int32_t)v - (int32_t)prevSample[i];
+    bool hit = (v > trig) && (rise > (int32_t)FAST_RISE) &&
+               ((now - lastFired[i]) > DEBOUNCE_MS);
+    if (hit) {
       if (v > peak) { peak = v; triggered = i; }
-    } else {
-      // Only adapt baseline when we're NOT in the middle of a trigger.
+    } else if (v <= trig) {
+      // Only adapt baseline when comfortably below the trigger line.
       // Exponential moving average: heavily weighted toward old value.
       baseline[i] = (uint16_t)(((uint32_t)bl * ((1u << BASELINE_SHIFT) - 1) + v)
                                >> BASELINE_SHIFT);
     }
+    prevSample[i] = v;
   }
   if (triggered >= 0) {
     lastFired[triggered] = now;
