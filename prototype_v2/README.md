@@ -10,7 +10,7 @@ penilaian double-tap, posisi tembakan).
 | Pengesanan tembakan | 1 sensor pilih (peak tertinggi) | 4 amplitude dikumpul dalam **window 30ms** |
 | Debounce | 250 ms | **60 ms** (catch double-tap split 0.10s) |
 | Posisi | Suku (S1/S2/S3/S4) | **(X, Y) anggaran** dari weighted-centroid |
-| Skor | S1=10, S2=8, S3=6, S4=4 (zon piezo) | **ISSF 10-ring** dari jarak ke pusat |
+| Skor | S1=10, S2=8, S3=6, S4=4 (zon piezo) | **5-ring** dari jarak ke pusat (5/4/3/2/1 mata) |
 | Split-time | — | **Real-time** + min + average |
 | Visualisasi | Kotak warna per piezo | **Canvas 2D** dengan dot per tembakan + ring scoring |
 
@@ -137,7 +137,7 @@ Posisi sensor `Sx, Sy`:
 Faktor `1.6` adalah empirical stretch supaya hit pada sudut sebenar (yang bagi
 weight ~0.6 ke sensor terdekat) menghasilkan koordinat ~1.0 pada sudut visualisasi.
 
-### ISSF zone scoring (central)
+### Zone scoring (central) — 5 ring
 
 ```
 r = sqrt(X^2 + Y^2)
@@ -145,20 +145,15 @@ zone = first ring where r <= RING_R[i]
 score = RING_SCORE[zone]
 ```
 
-Ring radii (normalized):
-| Zone | Radius | Skor |
+Ring radii (normalized 0..1):
+
+| Zone | Radius | Mata |
 |---|---|---|
-| 10X (bullseye) | 0.05 | 11 |
-| 10 | 0.10 | 10 |
-| 9 | 0.20 | 9 |
-| 8 | 0.30 | 8 |
-| 7 | 0.40 | 7 |
-| 6 | 0.50 | 6 |
-| 5 | 0.65 | 5 |
-| 4 | 0.80 | 4 |
-| 3 | 0.95 | 3 |
-| 2 | 1.00 | 2 |
-| 1 (luar) | 1.30 | 1 |
+| Tengah | 0.20 | **5** |
+| Ring 2 | 0.40 | **4** |
+| Ring 3 | 0.60 | **3** |
+| Ring 4 | 0.80 | **2** |
+| Ring 5 (luar) | 1.30 | **1** |
 | Miss | > 1.30 | 0 |
 
 ### Split-time

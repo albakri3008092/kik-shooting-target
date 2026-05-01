@@ -6,15 +6,15 @@
 //       triangulates an (X, Y) impact point on the target face using a
 //       weighted centroid of the per-sensor peaks. Each target is mapped
 //       in the [-1, +1] x [-1, +1] normalized square; the dashboard
-//       paints dots over a 10-ring ISSF target visualization.
+//       paints dots over a 5-ring concentric target visualization.
 //    2. Split-time tracking: every consecutive pair of hits on the same
 //       target produces a "split" in milliseconds. The dashboard shows
 //       the most recent split plus the running average — useful for
 //       tactical / double-tap evaluation.
-//    3. Score zones use ISSF rifle target rings (10X .. 1) computed from
-//       the distance from center, not the simple S1=10 / S2=8 demo
-//       mapping. Each hit's zone score is included in the ring buffer
-//       and the per-target running total.
+//    3. Score zones use a simple 5-ring concentric layout (5..1 marks)
+//       computed from the distance from center, not the demo's static
+//       S1=10 / S2=8 mapping. Each hit's zone + score is included in the
+//       ring buffer and the per-target running total.
 //    4. Sensor health monitoring kept from demo (HealthPacket type 3),
 //       with the same OK / NOISY / BROKEN / UNKNOWN classification.
 //
@@ -55,23 +55,18 @@ static const int     BUZZ_CH    = 0;
 static const float SENSOR_X[4] = { -1.f, +1.f, -1.f, +1.f };
 static const float SENSOR_Y[4] = { +1.f, +1.f, -1.f, -1.f };
 
-// ISSF rifle target ring radii (outer edge) in normalized [0, 1].
-// Zone score == 11 - index. Ring 0 is bullseye (10X, scored as 11);
-// the visualization maps 10X to a tighter inner ring inside ring 1.
-static const float RING_R[11] = {
-  0.05f, // 10X (inner ten)
-  0.10f, // 10
-  0.20f, // 9
-  0.30f, // 8
-  0.40f, // 7
-  0.50f, // 6
-  0.65f, // 5
-  0.80f, // 4
-  0.95f, // 3
-  1.00f, // 2
-  1.30f, // 1 (extreme outer; anything beyond is a miss)
+// 5-zone target ring radii (outer edge) in normalized [0, 1].
+// Centre is 5 marks, each next ring decrements by 1 down to 1 at the edge.
+// The 6th index is "miss" (off-target) and scores 0.
+static const uint8_t NUM_RINGS = 5;
+static const float RING_R[NUM_RINGS] = {
+  0.20f, // 5 marks (centre)
+  0.40f, // 4 marks
+  0.60f, // 3 marks
+  0.80f, // 2 marks
+  1.30f, // 1 mark  (extreme outer; anything beyond is a miss)
 };
-static const uint8_t RING_SCORE[11] = { 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
+static const uint8_t RING_SCORE[NUM_RINGS] = { 5, 4, 3, 2, 1 };
 
 // ---------- Stage 5: per-sensor gain calibration ----------
 // Each target stores 4 reference peak values (one per sensor) representing
@@ -134,10 +129,10 @@ struct TargetState {
   uint32_t lastSeen      = 0;
   uint32_t lastHitMs     = 0;
   uint16_t hitCount      = 0;
-  uint32_t scoreSum      = 0;     // ISSF score sum (can exceed 16 bits over a long session)
+  uint32_t scoreSum      = 0;     // running total marks (5+4+3+2+1 zones)
   uint16_t lastHitSeq    = 0;
   uint8_t  lastTrigger   = 0;     // 1..4
-  uint8_t  lastZone      = 0;     // 1..11 (11 = 10X)
+  uint8_t  lastZone      = 0;     // 0=5pt centre, 1=4pt, ... 4=1pt, 5=miss
   uint8_t  lastScore     = 0;
   float    lastX         = 0.f;
   float    lastY         = 0.f;
@@ -161,8 +156,8 @@ struct RecentHit {
   uint32_t ts;
   uint8_t  targetID;
   uint8_t  triggerSensor;     // 1..4
-  uint8_t  zone;              // 1..11 (11 = 10X)
-  uint8_t  score;             // ISSF ring score
+  uint8_t  zone;              // 0=5pt centre, 1=4pt, ... 4=1pt, 5=miss
+  uint8_t  score;             // 0..5 marks
   int16_t  x10;               // X * 1000 (normalized -1000..+1000)
   int16_t  y10;               // Y * 1000
   uint16_t splitMs;           // split from previous hit on same target
@@ -328,17 +323,18 @@ static void logFlushOne(const LogEntry& e) {
   gLogLines++;
 }
 
-// Map (X, Y) -> ISSF zone index (0=10X, 1=10, 2=9, ... 10=1) and score.
+// Map (X, Y) -> zone index (0=centre 5pt, 1=4pt, 2=3pt, 3=2pt, 4=1pt) and
+// score. zoneIdx == NUM_RINGS means "off target" (miss, 0 marks).
 static void scoreZone(float x, float y, uint8_t& zoneIdx, uint8_t& score) {
   float r = sqrtf(x * x + y * y);
-  for (int i = 0; i < 11; i++) {
+  for (int i = 0; i < NUM_RINGS; i++) {
     if (r <= RING_R[i]) {
       zoneIdx = (uint8_t)i;
       score   = RING_SCORE[i];
       return;
     }
   }
-  zoneIdx = 11;   // off target
+  zoneIdx = NUM_RINGS;   // off target
   score   = 0;
 }
 
@@ -516,7 +512,9 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
 <script>
 const N = 3;
 const POLL_MS = 200;
-const RING_R = [0.05,0.10,0.20,0.30,0.40,0.50,0.65,0.80,0.95,1.00];
+// 5-zone target rings (must match RING_R[] in central_v2.ino).
+const RING_R   = [0.20, 0.40, 0.60, 0.80, 1.00];
+const RING_PTS = [5, 4, 3, 2, 1];
 function fmtAgo(ms){
   if(!ms || ms<1000) return 'baru';
   const s = Math.round(ms/1000);
@@ -568,23 +566,39 @@ function drawTarget(i, t){
   const cx = W/2, cy = H/2, R = Math.min(W,H)/2 * 0.95;
   ctx.fillStyle = '#0d1628';
   ctx.fillRect(0,0,W,H);
-  // Draw concentric ring scoring
+  // Draw 5 concentric scoring rings, outermost first so inner rings paint
+  // on top. Alternate light/dark fills for legibility on small canvases.
+  const ringFill = ['rgba(255,77,109,0.35)','rgba(255,143,163,0.25)',
+                    'rgba(255,212,59,0.22)','rgba(76,201,240,0.18)',
+                    'rgba(0,229,168,0.14)'];
   for(let r=RING_R.length-1;r>=0;r--){
     const rr = RING_R[r] * R;
     ctx.beginPath();
     ctx.arc(cx, cy, rr, 0, Math.PI*2);
-    const fillByRing = ['#ff4d6d','#ff8fa3','#ffb3c1','#ffd43b','#ffe066','#fff3bf','#a5d8ff','#74c0fc','#4dabf7','#1971c2'];
-    ctx.fillStyle = r % 2 === 0 ? '#0d1628' : 'rgba(255,255,255,0.03)';
+    ctx.fillStyle = ringFill[r] || '#0d1628';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
     ctx.lineWidth = 1;
     ctx.stroke();
   }
-  // Bullseye dot (10X inner)
+  // Centre dot (5-mark zone visual highlight)
   ctx.beginPath();
-  ctx.arc(cx, cy, RING_R[0]*R, 0, Math.PI*2);
+  ctx.arc(cx, cy, RING_R[0]*R*0.35, 0, Math.PI*2);
   ctx.fillStyle = '#ffd43b';
   ctx.fill();
+  // Zone labels (5,4,3,2,1) along the +X axis between consecutive rings.
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let prev = 0;
+  for(let r=0;r<RING_R.length;r++){
+    const mid = (prev + RING_R[r]) / 2;
+    ctx.fillText(''+RING_PTS[r], cx + mid*R, cy);
+    prev = RING_R[r];
+  }
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
   // Sensor markers (S1..S4 at corners)
   ctx.fillStyle = '#8896b8';
   ctx.font = '10px monospace';
@@ -717,9 +731,8 @@ function renderFeed(recent){
   }
 }
 function zoneLabel(z){
-  // 0=10X 1=10 2=9 ... 10=1, 11=miss
-  if(z === 0) return '10X';
-  if(z >= 1 && z <= 10) return ''+(11-z);
+  // 0=5pt centre, 1=4pt, 2=3pt, 3=2pt, 4=1pt, 5=miss
+  if(z >= 0 && z <= 4) return ''+(5-z);
   return 'M';
 }
 async function resetAll(){
@@ -963,9 +976,8 @@ static void handleStatus() {
     j += ",\"lastTrigger\":"; j += t.lastTrigger;
     j += ",\"lastZone\":";    j += t.lastZone;
     j += ",\"lastZoneLabel\":\"";
-    if (t.lastZone == 0)               j += "10X";
-    else if (t.lastZone >= 1 && t.lastZone <= 10) j += String(11 - t.lastZone);
-    else                               j += "M";
+    if (t.lastZone < NUM_RINGS) j += String((int)RING_SCORE[t.lastZone]);
+    else                        j += "M";
     j += "\"";
     j += ",\"lastScore\":";   j += t.lastScore;
     // Floats serialized with 3 decimals.
