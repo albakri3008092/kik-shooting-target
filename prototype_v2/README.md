@@ -174,13 +174,66 @@ average = splitSum / splitCount
 
 Dipaparkan di dashboard sebagai "Last Split", "Avg Split", "Best Split".
 
+### Calibration (Stage 5)
+
+Setiap sasaran simpan **4 nilai rujukan peak** (satu per sensor) dalam NVS
+Preferences. Triangulation membahagikan tiap-tiap raw peak dengan nilai
+rujukan sensor itu sebelum kira centroid:
+
+```
+peak_norm[i] = peak[i] / refPeak[i]
+X = sum(peak_norm[i] * Sx[i]) / sum(peak_norm) * 1.6
+Y = sum(peak_norm[i] * Sy[i]) / sum(peak_norm) * 1.6
+```
+
+Hasil: piezo dengan sensitiviti berbeza (atau dipasang dengan jarak
+berlainan ke pusat papan) akan beri sumbangan setara ke posisi.
+
+**UX kalibrasi (4 langkah, ~30 saat):**
+1. Tablet → tekan butang "Kalibrasi" pada kad sasaran.
+2. Banner kuning timbul: *"Ketuk S1 sekarang"*. Ketuk piezo S1 satu kali.
+3. Banner update: *"Ketuk S2 sekarang"*. Ulang untuk S3, S4.
+4. Selesai → banner hilang, badge `CAL: ON` hijau muncul. Nilai disimpan
+   dalam NVS — kekal selepas reboot.
+
+**Endpoint HTTP:**
+- `POST /cal/start?target=N` — masuk mod kalibrasi sasaran N
+- `POST /cal/cancel` — keluar mod kalibrasi tanpa simpan
+- `POST /cal/clear?target=N` — padam kalibrasi sasaran N
+- `GET  /status` → JSON `cal: {active, target, step, capture[]}` +
+  per-target `calValid` dan `calRef[]`
+
+Hits semasa mod kalibrasi **tidak dikira** ke skor — ia training samples
+sahaja. Buzzer tetap chirp sebagai feedback ketukan.
+
+### Session log (Stage 6)
+
+Setiap hit yang diterima diqueue (FreeRTOS xQueue) dan ditulis ke
+`/session.csv` dalam SPIFFS. Format:
+
+```
+ts_ms,target,trigger,zone,score,x,y,split_ms,peak1,peak2,peak3,peak4
+12345678,1,1,1,10,-0.123,0.456,0,3120,1820,560,440
+12345789,1,2,2,9,0.234,0.667,111,1240,3380,520,510
+...
+```
+
+Tablet boleh download CSV terus dari pautan dashboard:
+
+- `GET  /log.csv` — stream fail penuh (Content-Disposition: attachment)
+- `POST /log/clear` — truncate + tulis semula header sahaja
+
+Queue depth = 64 entri; pada loop, central drain sehingga 4 baris setiap
+iterasi supaya HTTP server tetak responsif. SPIFFS append ~5 ms per
+baris, jadi 4 hit sekaligus = ~20 ms — masih dalam bajet 200 ms poll.
+
 ## Limitasi semasa
 
 | Isu | Workaround |
 |---|---|
-| Triangulation guna weighted-centroid simple → bias ke sudut bila hit jauh dari pusat | Stage 5: tambah calibration mode (5-point fit) |
-| ISSF zone radii adalah default; tak kalibrasi ke saiz sebenar papan | Stage 5: input saiz papan + offset gain |
-| Tiada storan persistent → score reset bila reboot | Stage 6: SPIFFS log |
+| Triangulation weighted-centroid bias ke sudut bila hit jauh dari pusat (sensor terdekat dominate) | Calibration Stage 5 normalize per-sensor; untuk fit yang lebih baik perlu polynomial 2D dengan 9-point grid |
+| ISSF zone radii fixed ke unit normalized (bukan cm sebenar) | Tambah field `target_diameter_cm` dalam Preferences → convert (X,Y) ke cm |
+| SPIFFS bersize ~1.5 MB → boleh simpan ~30k baris CSV. Tiada auto-rotate | Padam log selepas eksport ke laptop / SD-card |
 | 60ms debounce → tak boleh handle split < 0.10s (world-class IPSC) | Phase 3: TDoA dengan i2s_adc DMA |
 
 ## Roadmap
@@ -189,5 +242,5 @@ Dipaparkan di dashboard sebagai "Last Split", "Avg Split", "Best Split".
 - ✅ Stage 2: Split-time tracking + dashboard
 - ✅ Stage 3: Amplitude triangulation core
 - ✅ Stage 4: Target visualization (canvas dots)
-- ⏳ Stage 5: ISSF score zones + 5-point calibration
-- ⏳ Stage 6: SPIFFS session log + CSV export
+- ✅ Stage 5: 4-point calibration mode + persistent storage (NVS)
+- ✅ Stage 6: SPIFFS session log + CSV export

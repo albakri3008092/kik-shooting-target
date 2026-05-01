@@ -26,6 +26,11 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <math.h>
+#include <Preferences.h>
+#include <FS.h>
+#include <SPIFFS.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 // ---------- Config ----------
 #define NUM_TARGETS       3
@@ -67,6 +72,37 @@ static const float RING_R[11] = {
   1.30f, // 1 (extreme outer; anything beyond is a miss)
 };
 static const uint8_t RING_SCORE[11] = { 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
+
+// ---------- Stage 5: per-sensor gain calibration ----------
+// Each target stores 4 reference peak values (one per sensor) representing
+// the response when a known shot lands directly above that sensor (corner).
+// During triangulation, raw peaks are normalized: peak[i] / refPeak[i]
+// before the weighted-centroid is computed. This compensates for piezos
+// of differing sensitivity, varying distance to mounting points, etc.
+//
+// Reference peaks are persisted in NVS Preferences so they survive reboots.
+// A value of 0 means "uncalibrated" — fall back to raw peaks.
+struct Calibration {
+  bool     valid;
+  uint16_t refPeak[4];
+};
+
+// Calibration UX state machine: when active, the central intercepts hits
+// for the chosen target and records peak[step] (peak of the sensor we're
+// asking the user to tap directly). Hits in this state do NOT advance the
+// target's hit count or score — they are training samples only.
+enum class CalState : uint8_t { IDLE, ACTIVE };
+
+// ---------- Stage 6: SPIFFS session log ----------
+// Every accepted hit is queued (FreeRTOS) and drained in loop() into
+// /session.csv. The HTTP server can stream the file at /log.csv. We use a
+// queue rather than direct writes from onEspNow because SPIFFS writes can
+// occasionally block for tens of milliseconds (wear levelling) — we don't
+// want to stall the ESP-NOW receive callback.
+#define LOG_QUEUE_LEN  64
+static const char* LOG_PATH = "/session.csv";
+static const char* LOG_HEADER =
+  "ts_ms,target,trigger,zone,score,x,y,split_ms,peak1,peak2,peak3,peak4\n";
 
 #pragma pack(push, 1)
 // MUST match target_v2.ino HitPacketV2.
@@ -135,6 +171,30 @@ static RecentHit recentBuf[RECENT_N] = {};
 static uint8_t   recentHead  = 0;
 static uint16_t  recentCount = 0;
 
+// Stage 5 globals.
+static Calibration  gCal[NUM_TARGETS + 1];        // index 1..NUM_TARGETS
+static CalState     gCalState  = CalState::IDLE;
+static uint8_t      gCalTarget = 0;               // 1..NUM_TARGETS
+static uint8_t      gCalStep   = 0;               // 0..3
+static uint16_t     gCalCapture[4] = {0, 0, 0, 0};// peaks captured this run
+static Preferences  gPrefs;
+
+// Stage 6 globals.
+struct LogEntry {
+  uint32_t ts;
+  uint8_t  targetID;
+  uint8_t  triggerSensor;
+  uint8_t  zone;
+  uint8_t  score;
+  int16_t  x10;
+  int16_t  y10;
+  uint16_t splitMs;
+  uint16_t peak[4];
+};
+static QueueHandle_t gLogQueue = nullptr;
+static volatile uint32_t gLogLines     = 0;       // approx; ground-truth on disk
+static volatile bool     gSpiffsReady  = false;
+
 static WebServer server(80);
 static volatile bool gHitPending = false;
 
@@ -142,16 +202,32 @@ static volatile bool gHitPending = false;
 //  Triangulation + scoring
 // =====================================================================
 // Peak-weighted centroid in the normalized [-1, +1] square. Returns
-// (X, Y) and the magnitude r = sqrt(X^2 + Y^2) for ring lookup.
-static void triangulate(const uint16_t peak[4], float& outX, float& outY) {
-  uint32_t total = 0;
-  for (int i = 0; i < 4; i++) total += peak[i];
-  if (total == 0) { outX = 0.f; outY = 0.f; return; }
+// (X, Y) and the magnitude r = sqrt(X^2 + Y^2) for ring lookup. When the
+// target has stored Calibration (Stage 5), each per-sensor peak is first
+// divided by its reference peak so that all 4 sensors contribute on a
+// comparable scale regardless of intrinsic sensitivity differences.
+static void triangulate(uint8_t targetID, const uint16_t peak[4],
+                        float& outX, float& outY) {
+  const Calibration& cal = (targetID >= 1 && targetID <= NUM_TARGETS)
+                              ? gCal[targetID]
+                              : gCal[0];   // sentinel: invalid -> no cal
+  float w[4];
+  float total = 0.f;
+  for (int i = 0; i < 4; i++) {
+    float p = (float)peak[i];
+    if (cal.valid && cal.refPeak[i] > 0) {
+      // Normalize to "fraction of this sensor's calibrated max response".
+      p = p / (float)cal.refPeak[i];
+    }
+    w[i]  = p;
+    total += p;
+  }
+  if (total <= 0.f) { outX = 0.f; outY = 0.f; return; }
   float fx = 0.f, fy = 0.f;
   for (int i = 0; i < 4; i++) {
-    float w = (float)peak[i] / (float)total;
-    fx += w * SENSOR_X[i];
-    fy += w * SENSOR_Y[i];
+    float r = w[i] / total;
+    fx += r * SENSOR_X[i];
+    fy += r * SENSOR_Y[i];
   }
   // Empirical gain: a perfectly centered hit puts equal weight on all 4
   // sensors so the centroid sits at (0, 0); a corner hit ~+/-0.6. Apply
@@ -165,6 +241,91 @@ static void triangulate(const uint16_t peak[4], float& outX, float& outY) {
   if (fy < -1.3f) fy = -1.3f;
   outX = fx;
   outY = fy;
+}
+
+// =====================================================================
+//  Stage 5: calibration helpers
+// =====================================================================
+// Build NVS key for a single uint16 reference peak: "T<id>S<sensor>".
+// (Preferences keys are limited to 15 chars; this fits.)
+static String calKey(uint8_t targetID, uint8_t sensorIdx) {
+  String k = "T"; k += targetID; k += "S"; k += sensorIdx; return k;
+}
+
+static void loadCalibration() {
+  // Open the "kikcal" namespace read-only first; Preferences will create
+  // it lazily on the first save.
+  if (!gPrefs.begin("kikcal", /*readOnly=*/true)) {
+    // No namespace yet; everything stays uncalibrated.
+    for (int t = 0; t <= NUM_TARGETS; t++) {
+      gCal[t].valid = false;
+      for (int i = 0; i < 4; i++) gCal[t].refPeak[i] = 0;
+    }
+    return;
+  }
+  for (int t = 1; t <= NUM_TARGETS; t++) {
+    bool any = false;
+    for (int i = 0; i < 4; i++) {
+      uint16_t v = gPrefs.getUShort(calKey((uint8_t)t, (uint8_t)i).c_str(), 0);
+      gCal[t].refPeak[i] = v;
+      if (v > 0) any = true;
+    }
+    gCal[t].valid = any;
+  }
+  gPrefs.end();
+}
+
+static void saveCalibrationFor(uint8_t targetID) {
+  if (!gPrefs.begin("kikcal", /*readOnly=*/false)) return;
+  for (int i = 0; i < 4; i++) {
+    gPrefs.putUShort(calKey(targetID, (uint8_t)i).c_str(),
+                     gCal[targetID].refPeak[i]);
+  }
+  gPrefs.end();
+}
+
+static void clearCalibrationFor(uint8_t targetID) {
+  if (gPrefs.begin("kikcal", /*readOnly=*/false)) {
+    for (int i = 0; i < 4; i++) {
+      gPrefs.remove(calKey(targetID, (uint8_t)i).c_str());
+    }
+    gPrefs.end();
+  }
+  gCal[targetID].valid = false;
+  for (int i = 0; i < 4; i++) gCal[targetID].refPeak[i] = 0;
+}
+
+// =====================================================================
+//  Stage 6: log helpers
+// =====================================================================
+static void logResetFile() {
+  if (!gSpiffsReady) return;
+  // Re-create the file with just the header line.
+  File f = SPIFFS.open(LOG_PATH, FILE_WRITE);
+  if (!f) return;
+  f.print(LOG_HEADER);
+  f.close();
+  gLogLines = 0;
+}
+
+static void logFlushOne(const LogEntry& e) {
+  if (!gSpiffsReady) return;
+  File f = SPIFFS.open(LOG_PATH, FILE_APPEND);
+  if (!f) return;
+  // Use printf for compactness; SPIFFS_FILE has print() that supports it.
+  f.printf("%lu,%u,%u,%u,%u,%.3f,%.3f,%u,%u,%u,%u,%u\n",
+           (unsigned long)e.ts,
+           (unsigned)e.targetID,
+           (unsigned)e.triggerSensor,
+           (unsigned)e.zone,
+           (unsigned)e.score,
+           e.x10 / 1000.f,
+           e.y10 / 1000.f,
+           (unsigned)e.splitMs,
+           (unsigned)e.peak[0], (unsigned)e.peak[1],
+           (unsigned)e.peak[2], (unsigned)e.peak[3]);
+  f.close();
+  gLogLines++;
 }
 
 // Map (X, Y) -> ISSF zone index (0=10X, 1=10, 2=9, ... 10=1) and score.
@@ -293,6 +454,32 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
   }
   button:hover{background:var(--bd)}
   button.danger{color:var(--d);border-color:rgba(255,77,109,.4)}
+  button.primary{color:var(--p);border-color:rgba(0,229,168,.4)}
+  a.btn{display:inline-block;text-decoration:none;background:var(--surf2);
+       color:var(--tx);border:1px solid var(--bd);padding:7px 12px;
+       border-radius:10px;font-size:12px}
+  .calbar{
+    background:linear-gradient(135deg,rgba(255,212,59,.18),rgba(76,201,240,.10));
+    border:1px solid rgba(255,212,59,.4);border-radius:14px;padding:10px 14px;
+    margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  }
+  .calbar.idle{display:none}
+  .calbar .ttl2{font-weight:800;color:var(--w)}
+  .calbar .step{
+    background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:999px;
+    padding:3px 10px;font-size:12px;color:var(--mut);font-weight:700;
+  }
+  .calbar .step.active{background:var(--w);color:#0b1221;border-color:var(--w)}
+  .calbar .step.done{background:rgba(0,229,168,.2);color:var(--p);border-color:var(--p)}
+  .cal-status{
+    font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+    padding:2px 7px;border-radius:999px;border:1px solid var(--bd);
+    background:rgba(255,255,255,.04);color:var(--mut);
+  }
+  .cal-status.on{color:var(--p);border-color:rgba(0,229,168,.4)}
+  .cal-status.off{color:var(--mut)}
+  .card-tools{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  .card-tools button{font-size:11px;padding:5px 9px}
 </style>
 </head>
 <body>
@@ -301,6 +488,14 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
   <h1>KIK Target — Prototype V2 <small>4-sensor + triangulation + split-time</small></h1>
   <div class="pill"><span class="dot" id="dot"></span><span id="conn">Menyambung…</span></div>
 </header>
+<div class="calbar idle" id="calbar">
+  <div class="ttl2" id="caltitle">Mod Kalibrasi</div>
+  <div class="step" id="cstep1">S1</div>
+  <div class="step" id="cstep2">S2</div>
+  <div class="step" id="cstep3">S3</div>
+  <div class="step" id="cstep4">S4</div>
+  <div style="margin-left:auto"><button onclick="cancelCal()" class="danger">Batal</button></div>
+</div>
 <div class="stat-row">
   <div class="stat"><div class="l">Sasaran Aktif</div><div class="v" id="sa">0/0</div></div>
   <div class="stat"><div class="l">Jumlah Hit</div><div class="v" id="sh">0</div></div>
@@ -312,8 +507,10 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
 <div class="feed">
   <h3>Tembakan Terkini</h3>
   <div id="feed"></div>
-  <div class="actions">
+  <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
     <button onclick="resetAll()" class="danger">Reset Sesi</button>
+    <a class="btn" href="/log.csv" download>Muat Turun CSV (<span id="loglines">0</span>)</a>
+    <button onclick="clearLog()">Padam Log</button>
   </div>
 </div>
 <script>
@@ -337,6 +534,7 @@ function buildGrid(){
       <div class="card-head">
         <div class="ttl">Sasaran ${i} <small>4 piezo</small></div>
         <div class="badge" id="bd${i}">offline</div>
+        <div class="cal-status off" id="cal${i}" title="Status kalibrasi">CAL: —</div>
       </div>
       <div class="target-vis"><canvas id="cv${i}" width="240" height="240"></canvas></div>
       <div class="stats2">
@@ -352,6 +550,10 @@ function buildGrid(){
         <div class="hp unknown" id="hp${i}_2"><div class="lbl">S2</div><div class="st">?</div></div>
         <div class="hp unknown" id="hp${i}_3"><div class="lbl">S3</div><div class="st">?</div></div>
         <div class="hp unknown" id="hp${i}_4"><div class="lbl">S4</div><div class="st">?</div></div>
+      </div>
+      <div class="card-tools">
+        <button class="primary" onclick="startCal(${i})">Kalibrasi</button>
+        <button onclick="clearCal(${i})">Padam Kalibrasi</button>
       </div>
     `;
     g.appendChild(c);
@@ -481,6 +683,10 @@ async function tick(){
         ? bestSplit + ' <small>ms</small>'
         : '— <small>ms</small>';
     renderFeed(d.recent || []);
+    updateCalBar(d);
+    updateCalBadges(d.targets || []);
+    const ll = document.getElementById('loglines');
+    if(ll) ll.textContent = (d.log && typeof d.log.lines === 'number') ? d.log.lines : '0';
   }catch(e){
     document.getElementById('dot').classList.remove('on');
     document.getElementById('conn').textContent = 'Terputus';
@@ -520,6 +726,57 @@ async function resetAll(){
   if(!confirm('Reset semua kaunter & dot history?')) return;
   await fetch('/reset', {method:'POST'});
   for(let i=1;i<=N;i++){ clearDots(i); lastSeq[i] = 0; }
+}
+async function startCal(i){
+  if(!confirm('Mula mod kalibrasi Sasaran '+i+'?\n'
+    +'Anda akan diminta ketuk S1, S2, S3, S4 satu demi satu.\n'
+    +'Hit semasa kalibrasi tidak dikira ke skor.')) return;
+  const r = await fetch('/cal/start?target='+i, {method:'POST'});
+  if(!r.ok){ alert('Gagal mula kalibrasi: '+r.status); return; }
+}
+async function cancelCal(){
+  await fetch('/cal/cancel', {method:'POST'});
+}
+async function clearCal(i){
+  if(!confirm('Padam kalibrasi Sasaran '+i+'?')) return;
+  await fetch('/cal/clear?target='+i, {method:'POST'});
+}
+async function clearLog(){
+  if(!confirm('Padam log sesi (CSV)?')) return;
+  await fetch('/log/clear', {method:'POST'});
+}
+function updateCalBar(d){
+  const bar = document.getElementById('calbar');
+  const cal = d.cal || {active:false,target:0,step:0,capture:[0,0,0,0]};
+  if(!cal.active){
+    bar.classList.add('idle');
+    return;
+  }
+  bar.classList.remove('idle');
+  document.getElementById('caltitle').textContent =
+    'Mod Kalibrasi T'+cal.target+' — Ketuk S'+(cal.step+1)+' sekarang';
+  for(let s=1;s<=4;s++){
+    const el = document.getElementById('cstep'+s);
+    el.classList.remove('active','done');
+    if(s-1 < cal.step) el.classList.add('done');
+    else if(s-1 === cal.step) el.classList.add('active');
+  }
+}
+function updateCalBadges(targets){
+  for(const t of (targets || [])){
+    const el = document.getElementById('cal'+t.id);
+    if(!el) continue;
+    el.classList.remove('on','off');
+    if(t.calValid){
+      el.classList.add('on');
+      el.textContent = 'CAL: ON';
+      el.title = 'Ref: '+(t.calRef||[]).join(', ');
+    }else{
+      el.classList.add('off');
+      el.textContent = 'CAL: OFF';
+      el.title = 'Belum dikalibrasi';
+    }
+  }
 }
 buildGrid();
 setInterval(tick, POLL_MS);
@@ -571,9 +828,43 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
   t.online   = true;
   t.lastSeen = millis();
 
+  // ---------- Stage 5: calibration interception ----------
+  // While the user is calibrating this target, hits are training samples,
+  // not scored events. Capture peak[step] (the sensor we're asking the
+  // user to tap directly) and advance. When all 4 sensors are captured,
+  // commit to NVS and exit calibration mode.
+  if (gCalState == CalState::ACTIVE && gCalTarget == tid) {
+    if (gCalStep < 4) {
+      // Use the trigger sensor's peak — that's the sensor closest to the
+      // tap. In the UX flow we tell the user "tap directly above S<step+1>"
+      // so trigger should already match step, but capturing peak[step]
+      // unconditionally avoids surprises if they miss-tap slightly.
+      uint8_t s = gCalStep;
+      gCalCapture[s] = p.peak[s];
+      Serial.printf("Cal T=%u S%u captured peak=%u\n",
+                    (unsigned)tid, (unsigned)(s + 1), (unsigned)p.peak[s]);
+      gCalStep++;
+      if (gCalStep >= 4) {
+        // Done — commit.
+        for (int i = 0; i < 4; i++) gCal[tid].refPeak[i] = gCalCapture[i];
+        gCal[tid].valid = true;
+        saveCalibrationFor(tid);
+        Serial.printf("Cal T=%u DONE ref=[%u,%u,%u,%u]\n",
+                      (unsigned)tid,
+                      gCal[tid].refPeak[0], gCal[tid].refPeak[1],
+                      gCal[tid].refPeak[2], gCal[tid].refPeak[3]);
+        gCalState  = CalState::IDLE;
+        gCalTarget = 0;
+        gCalStep   = 0;
+      }
+    }
+    gHitPending = true;     // still let buzzer chirp so user has feedback
+    return;                 // do NOT add to score / ring buffer
+  }
+
   // Triangulate position + score zone.
   float x, y;
-  triangulate(p.peak, x, y);
+  triangulate(tid, p.peak, x, y);
   uint8_t zoneIdx, score;
   scoreZone(x, y, zoneIdx, score);
 
@@ -613,6 +904,23 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
   recentHead = (recentHead + 1) % RECENT_N;
   if (recentCount < 0xFFFF) recentCount++;
 
+  // ---------- Stage 6: enqueue for SPIFFS log ----------
+  // Non-blocking send. If the queue is full, we silently drop — better
+  // than stalling the ESP-NOW callback. The main loop drains the queue.
+  if (gLogQueue) {
+    LogEntry le{};
+    le.ts            = now;
+    le.targetID      = tid;
+    le.triggerSensor = p.triggerSensor;
+    le.zone          = zoneIdx;
+    le.score         = score;
+    le.x10           = r.x10;
+    le.y10           = r.y10;
+    le.splitMs       = splitMs;
+    for (int i = 0; i < 4; i++) le.peak[i] = p.peak[i];
+    xQueueSend(gLogQueue, &le, 0);
+  }
+
   gHitPending = true;
 }
 
@@ -642,6 +950,13 @@ static void handleStatus() {
     if (i > 1) j += ",";
     j += "{\"id\":";          j += i;
     j += ",\"online\":";      j += (t.online ? "true" : "false");
+    j += ",\"calValid\":";    j += (gCal[i].valid ? "true" : "false");
+    j += ",\"calRef\":[";
+      j += gCal[i].refPeak[0]; j += ",";
+      j += gCal[i].refPeak[1]; j += ",";
+      j += gCal[i].refPeak[2]; j += ",";
+      j += gCal[i].refPeak[3];
+    j += "]";
     j += ",\"hits\":";        j += t.hitCount;
     j += ",\"scoreSum\":";    j += (uint32_t)t.scoreSum;
     j += ",\"lastHitSeq\":";  j += t.lastHitSeq;
@@ -695,8 +1010,80 @@ static void handleStatus() {
     j += ",\"ts\":";       j += (uint32_t)r.ts;
     j += "}";
   }
-  j += "]}";
+  j += "]";
+  // Top-level calibration / log status.
+  j += ",\"cal\":{";
+    j += "\"active\":";       j += (gCalState == CalState::ACTIVE ? "true" : "false");
+    j += ",\"target\":";      j += gCalTarget;
+    j += ",\"step\":";        j += gCalStep;
+    j += ",\"capture\":[";
+      j += gCalCapture[0]; j += ",";
+      j += gCalCapture[1]; j += ",";
+      j += gCalCapture[2]; j += ",";
+      j += gCalCapture[3];
+    j += "]";
+  j += "}";
+  j += ",\"log\":{";
+    j += "\"ready\":";        j += (gSpiffsReady ? "true" : "false");
+    j += ",\"lines\":";       j += (uint32_t)gLogLines;
+  j += "}";
+  j += "}";
   server.send(200, "application/json", j);
+}
+
+// ---------- Stage 5 endpoints ----------
+static void handleCalStart() {
+  if (!server.hasArg("target")) { server.send(400, "application/json",
+      "{\"ok\":false,\"err\":\"missing target\"}"); return; }
+  int tid = server.arg("target").toInt();
+  if (tid < 1 || tid > NUM_TARGETS) { server.send(400, "application/json",
+      "{\"ok\":false,\"err\":\"bad target\"}"); return; }
+  gCalState  = CalState::ACTIVE;
+  gCalTarget = (uint8_t)tid;
+  gCalStep   = 0;
+  for (int i = 0; i < 4; i++) gCalCapture[i] = 0;
+  Serial.printf("Cal START T=%d\n", tid);
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleCalCancel() {
+  Serial.println("Cal CANCEL");
+  gCalState  = CalState::IDLE;
+  gCalTarget = 0;
+  gCalStep   = 0;
+  for (int i = 0; i < 4; i++) gCalCapture[i] = 0;
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleCalClear() {
+  if (!server.hasArg("target")) { server.send(400, "application/json",
+      "{\"ok\":false,\"err\":\"missing target\"}"); return; }
+  int tid = server.arg("target").toInt();
+  if (tid < 1 || tid > NUM_TARGETS) { server.send(400, "application/json",
+      "{\"ok\":false,\"err\":\"bad target\"}"); return; }
+  clearCalibrationFor((uint8_t)tid);
+  Serial.printf("Cal CLEAR T=%d\n", tid);
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// ---------- Stage 6 endpoints ----------
+static void handleLogCsv() {
+  if (!gSpiffsReady) { server.send(503, "text/plain", "SPIFFS not ready"); return; }
+  if (!SPIFFS.exists(LOG_PATH)) {
+    // Empty log — return just the header so the file is well-formed.
+    server.send(200, "text/csv; charset=utf-8", LOG_HEADER);
+    return;
+  }
+  File f = SPIFFS.open(LOG_PATH, FILE_READ);
+  if (!f) { server.send(500, "text/plain", "open failed"); return; }
+  server.sendHeader("Content-Disposition", "attachment; filename=session.csv");
+  server.streamFile(f, "text/csv; charset=utf-8");
+  f.close();
+}
+
+static void handleLogClear() {
+  logResetFile();
+  server.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handleReset() {
@@ -758,9 +1145,51 @@ void setup() {
   }
   esp_now_register_recv_cb(onEspNow);
 
-  server.on("/",       HTTP_GET,  handleRoot);
-  server.on("/status", HTTP_GET,  handleStatus);
-  server.on("/reset",  HTTP_POST, handleReset);
+  // ---------- Stage 5: load calibration from NVS ----------
+  loadCalibration();
+  for (int t = 1; t <= NUM_TARGETS; t++) {
+    if (gCal[t].valid) {
+      Serial.printf("Cal T=%d loaded ref=[%u,%u,%u,%u]\n", t,
+                    gCal[t].refPeak[0], gCal[t].refPeak[1],
+                    gCal[t].refPeak[2], gCal[t].refPeak[3]);
+    } else {
+      Serial.printf("Cal T=%d not yet calibrated\n", t);
+    }
+  }
+
+  // ---------- Stage 6: SPIFFS log ----------
+  if (SPIFFS.begin(/*formatOnFail=*/true)) {
+    gSpiffsReady = true;
+    if (!SPIFFS.exists(LOG_PATH)) {
+      logResetFile();
+    } else {
+      // Count existing lines to seed gLogLines (cheap; file is small).
+      File f = SPIFFS.open(LOG_PATH, FILE_READ);
+      if (f) {
+        uint32_t lines = 0;
+        while (f.available()) {
+          if (f.read() == '\n') lines++;
+        }
+        f.close();
+        gLogLines = lines > 0 ? lines - 1 : 0;   // subtract header
+      }
+    }
+    Serial.printf("SPIFFS ready, %lu lines in log\n",
+                  (unsigned long)gLogLines);
+  } else {
+    Serial.println("SPIFFS mount failed; logging disabled");
+  }
+  gLogQueue = xQueueCreate(LOG_QUEUE_LEN, sizeof(LogEntry));
+  if (!gLogQueue) Serial.println("Log queue alloc failed");
+
+  server.on("/",            HTTP_GET,  handleRoot);
+  server.on("/status",      HTTP_GET,  handleStatus);
+  server.on("/reset",       HTTP_POST, handleReset);
+  server.on("/cal/start",   HTTP_POST, handleCalStart);
+  server.on("/cal/cancel",  HTTP_POST, handleCalCancel);
+  server.on("/cal/clear",   HTTP_POST, handleCalClear);
+  server.on("/log.csv",     HTTP_GET,  handleLogCsv);
+  server.on("/log/clear",   HTTP_POST, handleLogClear);
   server.onNotFound(handleNotFound);
   server.begin();
 }
@@ -773,6 +1202,19 @@ void loop() {
     KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 4000);
     delay(20);
     KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 0);
+  }
+
+  // ---------- Stage 6: drain log queue ----------
+  // We do at most a few writes per loop iteration so we don't hold off
+  // server.handleClient() for too long. SPIFFS append of one short line
+  // typically completes in <5 ms.
+  if (gLogQueue) {
+    LogEntry le;
+    int drained = 0;
+    while (drained < 4 && xQueueReceive(gLogQueue, &le, 0) == pdTRUE) {
+      logFlushOne(le);
+      drained++;
+    }
   }
 
   // Mark targets offline after silence.
