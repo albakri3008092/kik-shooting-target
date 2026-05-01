@@ -329,7 +329,7 @@ function renderFeed(recent){
     feedKey = '';
     return;
   }
-  const key = recent.map(r => r.t+':'+r.s+':'+r.ago).join('|');
+  const key = recent.map(r => r.t+':'+r.s+':'+r.sc).join('|');
   if(key === feedKey){
     // Just refresh "ago" text without rebuilding
     [...feedList.children].forEach((li, i)=>{

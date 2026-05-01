@@ -513,7 +513,7 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
 const N = 3;
 const POLL_MS = 200;
 // 5-zone target rings (must match RING_R[] in central_v2.ino).
-const RING_R   = [0.20, 0.40, 0.60, 0.80, 1.00];
+const RING_R   = [0.20, 0.40, 0.60, 0.80, 1.30];
 const RING_PTS = [5, 4, 3, 2, 1];
 function fmtAgo(ms){
   if(!ms || ms<1000) return 'baru';
@@ -976,8 +976,12 @@ static void handleStatus() {
     j += ",\"lastTrigger\":"; j += t.lastTrigger;
     j += ",\"lastZone\":";    j += t.lastZone;
     j += ",\"lastZoneLabel\":\"";
-    if (t.lastZone < NUM_RINGS) j += String((int)RING_SCORE[t.lastZone]);
-    else                        j += "M";
+    // Emit "" until the first hit so the dashboard's `value || '—'` fallback
+    // can show a dash instead of misreporting zone-0 (centre) as the last
+    // hit on a freshly-reset / freshly-online target.
+    if (t.hitCount == 0)             { /* leave empty */ }
+    else if (t.lastZone < NUM_RINGS) j += String((int)RING_SCORE[t.lastZone]);
+    else                             j += "M";
     j += "\"";
     j += ",\"lastScore\":";   j += t.lastScore;
     // Floats serialized with 3 decimals.
@@ -1208,12 +1212,21 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  uint32_t now = millis();
 
+  // Non-blocking buzzer chirp: start a tone on each new hit and remember
+  // when to silence it. We must NOT delay() here — at the v2 debounce
+  // (60 ms) hits can arrive every ~90 ms, and any blocking time starves
+  // server.handleClient() and the SPIFFS log drain below.
+  static uint32_t buzzOff = 0;
   if (gHitPending) {
     gHitPending = false;
     KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 4000);
-    delay(20);
+    buzzOff = now + 20;
+  }
+  if (buzzOff && now >= buzzOff) {
     KIK_BUZZ_TONE(BUZZER_PIN, BUZZ_CH, 0);
+    buzzOff = 0;
   }
 
   // ---------- Stage 6: drain log queue ----------
@@ -1230,7 +1243,6 @@ void loop() {
   }
 
   // Mark targets offline after silence.
-  uint32_t now = millis();
   for (int i = 1; i <= NUM_TARGETS; i++) {
     TargetState& t = T[i];
     if (t.online && (now - t.lastSeen) > 8000) {
