@@ -16,9 +16,14 @@ penilaian double-tap, posisi tembakan).
 
 ## Hardware (cadangan)
 
-Berbanding demo, prototype memerlukan **perintang 1 MΩ pull-down** pada setiap
-piezo signal pin (jumlah 12 untuk 3 sasaran). Tanpa perintang, GPIO 34/35
-tidak stabil dan triangulation akan bias ke S1/S2.
+Prototype V2 menyokong **15 sasaran** + 1 pusat (16 ESP32). Setiap sasaran
+perlu **perintang 1 MΩ pull-down** pada setiap piezo signal pin (jumlah 60
+untuk 15 sasaran, 4 piezo per sasaran). Tanpa perintang, GPIO 34/35 tidak
+stabil dan triangulation akan bias ke S1/S2.
+
+Nota ESP-NOW: pusat **tidak** perlu daftar peer untuk receive — semua 15
+sasaran terus boleh hantar selagi `RECEIVER_MAC` mereka padan dengan MAC
+softAP pusat. Had ESP-NOW peer (~20) hanya berkenaan apabila *menghantar*.
 
 ```
 Piezo S1 (+) ── GPIO 32 ── 1 MΩ ── GND
@@ -58,16 +63,20 @@ Susunan piezo di belakang papan sasaran (saiz 30cm x 30cm cadangan):
 3. Buka Serial Monitor (115200), tekan EN. Catat baris `MAC: ...`.
 4. SSID akan keluar: `Target_System_V2`, password `12345678`.
 
-### 2. Sasaran (ulang 3 kali)
+### 2. Sasaran (ulang sehingga 15 kali)
 
 1. Buka `prototype_v2/target_v2/target_v2.ino`.
 2. Edit 2 baris atas:
    ```cpp
-   #define TARGET_ID    1                 // 1, 2, atau 3
+   #define TARGET_ID    1                 // 1..15, unik per board
    static uint8_t RECEIVER_MAC[6] = { ... };  // MAC pusat dari step 1
    ```
 3. Upload ke sasaran #1.
-4. Ulang dengan `TARGET_ID = 2`, lalu `= 3`.
+4. Ulang untuk `TARGET_ID = 2, 3, ... 15`. Pastikan tiada dua board guna ID
+   yang sama (sasaran ID-bertindih akan kelihatan "berkelip" pada dashboard).
+
+Tip: untuk flash banyak board, simpan satu salinan sketsa per ID supaya
+awak hanya perlu pilih port lalu Upload, tanpa edit semula `TARGET_ID`.
 
 ### 3. Tablet
 

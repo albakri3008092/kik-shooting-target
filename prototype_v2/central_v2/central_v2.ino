@@ -33,8 +33,15 @@
 #include <freertos/queue.h>
 
 // ---------- Config ----------
-#define NUM_TARGETS       3
-#define RECENT_N          24
+// Bumped to 15 to support a full multi-lane range. ESP-NOW receive does
+// not require pre-registering peers, so the central can accept hits from
+// any of the 15 target boards as long as their TARGET_ID is in [1..15]
+// and their RECEIVER_MAC matches this board's softAP MAC.
+#define NUM_TARGETS       15
+// Ring buffer of recent hits shown in the feed. With 15 targets firing
+// in parallel during a string, 24 was too short; bump so the feed shows
+// roughly the last 4-5 shots per target on average.
+#define RECENT_N          48
 static const char*  AP_SSID     = "Target_System_V2";
 static const char*  AP_PASSWORD = "12345678";
 static const uint8_t BUZZER_PIN = 25;
@@ -94,7 +101,9 @@ enum class CalState : uint8_t { IDLE, ACTIVE };
 // queue rather than direct writes from onEspNow because SPIFFS writes can
 // occasionally block for tens of milliseconds (wear levelling) — we don't
 // want to stall the ESP-NOW receive callback.
-#define LOG_QUEUE_LEN  64
+// Drained in loop() at up to 4 writes per iteration. Sized for ~5 hits/s
+// across 15 targets bursty for a few seconds without dropping events.
+#define LOG_QUEUE_LEN  128
 static const char* LOG_PATH = "/session.csv";
 static const char* LOG_HEADER =
   "ts_ms,target,trigger,zone,score,x,y,split_ms,peak1,peak2,peak3,peak4\n";
@@ -385,7 +394,11 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
   .stat .l{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px}
   .stat .v{font-size:20px;font-weight:800;margin-top:2px}
   .stat .v small{font-size:11px;color:var(--mut);font-weight:500}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+  /* With 15 cards we want more density. minmax(260px,1fr) lets a typical
+     1024px-wide tablet fit 3 cards per row instead of 2, and a 1280px
+     desktop fit 4. Cards stay readable because the per-target canvas
+     stays square via aspect-ratio:1/1. */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
   .card{
     background:var(--surf);border:1px solid var(--bd);border-radius:18px;
     padding:14px;display:flex;flex-direction:column;gap:10px;
@@ -510,7 +523,9 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
   </div>
 </div>
 <script>
-const N = 3;
+// Must match NUM_TARGETS in central_v2.ino. Dashboard builds N cards on
+// load; if you change one, change the other.
+const N = 15;
 const POLL_MS = 200;
 // 5-zone target rings (must match RING_R[] in central_v2.ino).
 const RING_R   = [0.20, 0.40, 0.60, 0.80, 1.30];
@@ -956,7 +971,9 @@ static const char* sensorHealthLabel(uint16_t baselineV, uint32_t healthAge,
 
 static void handleStatus() {
   String j;
-  j.reserve(2048);
+  // ~400-450 B per target plus recent[] (~80 B/entry, RECENT_N=48) and the
+  // top-level cal/log objects. 12 KB headroom for 15 targets + full feed.
+  j.reserve(12288);
   j += "{\"targets\":[";
   for (int i = 1; i <= NUM_TARGETS; i++) {
     TargetState& t = T[i];

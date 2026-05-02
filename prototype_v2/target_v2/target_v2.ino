@@ -24,6 +24,9 @@
 #include <esp_wifi.h>
 
 // ---------- EDIT THESE TWO LINES PER BOARD ----------
+// TARGET_ID must be unique across all 15 target boards. The central
+// (central_v2.ino) tracks state for IDs 1..15 and ignores anything
+// outside that range, so flashing 16+ boards will silently drop them.
 #define TARGET_ID    1                                      // 1..15
 static uint8_t RECEIVER_MAC[6] = { 0xB0, 0xCB, 0xD8, 0xCF, 0xF1, 0x61 };
 // ----------------------------------------------------
