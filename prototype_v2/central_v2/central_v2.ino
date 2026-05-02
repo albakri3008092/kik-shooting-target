@@ -182,6 +182,17 @@ static uint8_t      gCalTarget = 0;               // 1..NUM_TARGETS
 static uint8_t      gCalStep   = 0;               // 0..3
 static uint16_t     gCalCapture[4] = {0, 0, 0, 0};// peaks captured this run
 static Preferences  gPrefs;
+// Deferred-commit handoff from the ESP-NOW callback (WiFi task) to the
+// main loop. NVS Preferences (`gPrefs`) is not safe to share across
+// tasks: a flash write from the WiFi task while an HTTP handler holds
+// `gPrefs.begin()` on the main loop can corrupt the internal NVS handle.
+// We avoid that by only ever calling Preferences from one task — the
+// main loop. When calibration completes inside `onEspNow` we copy the
+// 4 captured peaks here, set `gCalCommitPending`, and let `loop()`
+// perform the actual gCal write + NVS save.
+static volatile bool gCalCommitPending = false;
+static uint8_t       gCalCommitTarget  = 0;
+static uint16_t      gCalCommitRef[4]  = {0, 0, 0, 0};
 
 // Stage 6 globals.
 struct LogEntry {
@@ -873,14 +884,20 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
                     (unsigned)tid, (unsigned)(s + 1), (unsigned)p.peak[s]);
       gCalStep++;
       if (gCalStep >= 4) {
-        // Done — commit.
-        for (int i = 0; i < 4; i++) gCal[tid].refPeak[i] = gCalCapture[i];
-        gCal[tid].valid = true;
-        saveCalibrationFor(tid);
-        Serial.printf("Cal T=%u DONE ref=[%u,%u,%u,%u]\n",
-                      (unsigned)tid,
-                      gCal[tid].refPeak[0], gCal[tid].refPeak[1],
-                      gCal[tid].refPeak[2], gCal[tid].refPeak[3]);
+        // Done capturing. Hand the captured peaks off to the main loop
+        // for the actual `gCal[tid]` update + NVS save — those touch
+        // `gPrefs`, which `handleCalClear()` (running on the main loop)
+        // also opens, and Preferences is not thread-safe. Doing the
+        // commit on the main loop also keeps tens-of-ms NVS flash
+        // writes out of the WiFi receive callback.
+        for (int i = 0; i < 4; i++) gCalCommitRef[i] = gCalCapture[i];
+        gCalCommitTarget  = tid;
+        gCalCommitPending = true;
+        Serial.printf("Cal T=%u capture complete, queued for commit\n",
+                      (unsigned)tid);
+        // Exit the calibration UX immediately so the dashboard stops
+        // prompting for taps; the in-memory `gCal[tid]` + NVS write
+        // will land a few ms later in loop().
         gCalState  = CalState::IDLE;
         gCalTarget = 0;
         gCalStep   = 0;
@@ -1230,6 +1247,26 @@ void setup() {
 void loop() {
   server.handleClient();
   uint32_t now = millis();
+
+  // Drain any pending calibration commit handed off from onEspNow.
+  // Performing the gCal[] update + NVS save here means all gPrefs
+  // access happens on a single task (the Arduino main loop), so the
+  // shared Preferences object cannot be corrupted by concurrent
+  // begin()/end() from the WiFi task. handleCalClear() also runs on
+  // this task, so save and clear are now naturally serialized.
+  if (gCalCommitPending) {
+    gCalCommitPending = false;
+    uint8_t tid = gCalCommitTarget;
+    if (tid >= 1 && tid <= NUM_TARGETS) {
+      for (int i = 0; i < 4; i++) gCal[tid].refPeak[i] = gCalCommitRef[i];
+      gCal[tid].valid = true;
+      saveCalibrationFor(tid);
+      Serial.printf("Cal T=%u DONE ref=[%u,%u,%u,%u]\n",
+                    (unsigned)tid,
+                    gCal[tid].refPeak[0], gCal[tid].refPeak[1],
+                    gCal[tid].refPeak[2], gCal[tid].refPeak[3]);
+    }
+  }
 
   // Non-blocking buzzer chirp: start a tone on each new hit and remember
   // when to silence it. We must NOT delay() here — at the v2 debounce
