@@ -157,6 +157,22 @@ struct TargetState {
   uint32_t lastHealthMs  = 0;
   uint16_t baseline[4]   = {0, 0, 0, 0};
   uint16_t peak[4]       = {0, 0, 0, 0};
+
+  // Hit-based dead-sensor detection. A wire that is broken/disconnected
+  // produces baseline ~0 (internal pull-down or external 1 MΩ holds the
+  // line at GND), which is electrically indistinguishable from a working
+  // but idle piezo. The HealthPacket alone therefore cannot tell the two
+  // apart. But during an actual shot, a working piezo always picks up
+  // SOME mechanical vibration — even if it isn't the trigger sensor, the
+  // impact propagates through the board and registers a peak well above
+  // baseline (~50–500 ADC counts). A broken sensor stays flat. We track
+  // a per-sensor streak: how many consecutive recent hits this sensor
+  // failed to register any meaningful response. After DEAD_STREAK_N
+  // silent hits (with at least DEAD_MIN_HITS total hits to bootstrap),
+  // we surface the sensor as "DEAD" in the dashboard so the user can
+  // physically inspect the wire.
+  uint8_t  deadStreak[4] = {0, 0, 0, 0};
+  uint16_t hitsForHealth = 0;   // saturating counter, used as bootstrap
 };
 static TargetState T[NUM_TARGETS + 1];   // index 1..NUM_TARGETS
 
@@ -445,6 +461,7 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
   .hp.ok     .st{color:var(--p)}
   .hp.noisy  .st{color:var(--w)}
   .hp.broken .st{color:var(--d);animation:blink 1s steps(2) infinite}
+  .hp.dead   .st{color:var(--d);animation:blink 1s steps(2) infinite;font-weight:900}
   .hp.unknown .st{color:var(--mut)}
   @keyframes blink{50%{opacity:.4}}
   .feed{
@@ -694,13 +711,14 @@ async function tick(){
       document.getElementById('lz'+i).textContent = t.lastZoneLabel || '—';
       document.getElementById('lt'+i).textContent = t.lastTrigger ? ('S'+t.lastTrigger) : '—';
       // Sensor health badges
-      const healthLabel = {ok:'OK', noisy:'NOISY', broken:'ROSAK', unknown:'?'};
+      const healthLabel = {ok:'OK', noisy:'NOISY', broken:'ROSAK',
+                           dead:'MATI', unknown:'?'};
       for(let s=1;s<=4;s++){
         const sd = (t.sensors || [])[s-1] || {};
         const h = sd.h || 'unknown';
         const el = document.getElementById('hp'+i+'_'+s);
         if(!el) continue;
-        el.classList.remove('ok','noisy','broken','unknown');
+        el.classList.remove('ok','noisy','broken','dead','unknown');
         el.classList.add(h);
         el.querySelector('.st').textContent = healthLabel[h];
         el.title = 'baseline='+(sd.bl||0)+'  peak='+(sd.pk||0);
@@ -936,6 +954,24 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
   t.lastY        = y;
   for (int i = 0; i < 4; i++) t.lastPeak[i] = p.peak[i];
 
+  // ---------- Hit-based dead-sensor detection ----------
+  // For each sensor, did this hit register any meaningful response
+  // (peak well above current baseline)? If not, increment the silent
+  // streak; otherwise reset it. Threshold is conservative on purpose:
+  // even cross-target propagation typically lifts an idle piezo by
+  // 50–100 counts when a shot lands, while a broken wire stays within
+  // a few counts of baseline.
+  static const int16_t DEAD_DELTA = 50;
+  for (int i = 0; i < 4; i++) {
+    int32_t resp = (int32_t)p.peak[i] - (int32_t)t.baseline[i];
+    if (resp < DEAD_DELTA) {
+      if (t.deadStreak[i] < 0xFF) t.deadStreak[i]++;
+    } else {
+      t.deadStreak[i] = 0;
+    }
+  }
+  if (t.hitsForHealth < 0xFFFF) t.hitsForHealth++;
+
   // Append to ring buffer.
   RecentHit& r = recentBuf[recentHead];
   r.ts            = now;
@@ -977,10 +1013,24 @@ static void handleRoot() {
 }
 
 // Helper: JSON-escaped status of one sensor's health.
+// `deadStreak` and `hitsForHealth` come from the per-target hit history
+// and let us flag a wire-disconnect (which a baseline check alone
+// cannot detect, because a broken wire and an idle sensor both sit at
+// ~0 V due to the pull-down).
+static const uint8_t  DEAD_STREAK_N = 3;   // silent hits in a row
+static const uint16_t DEAD_MIN_HITS = 3;   // need >= this many hits to trust streak
 static const char* sensorHealthLabel(uint16_t baselineV, uint32_t healthAge,
-                                     bool haveHealth) {
+                                     bool haveHealth,
+                                     uint8_t deadStreak,
+                                     uint16_t hitsForHealth) {
   if (!haveHealth)         return "unknown";
   if (baselineV >= 3000)   return "broken";
+  if (hitsForHealth >= DEAD_MIN_HITS && deadStreak >= DEAD_STREAK_N) {
+    // Sensor failed to respond to several consecutive shots while other
+    // sensors on the same target ARE registering activity — almost
+    // certainly a wire/contact problem at this piezo.
+    return "dead";
+  }
   if (baselineV >= 1000)   return "noisy";
   return "ok";
   (void)healthAge;
@@ -1038,7 +1088,9 @@ static void handleStatus() {
       uint16_t pk = t.peak[s];
       j += "{\"bl\":" ;  j += bl;
       j += ",\"pk\":" ; j += pk;
-      j += ",\"h\":\""; j += sensorHealthLabel(bl, healthAge, haveHealth);
+      j += ",\"h\":\""; j += sensorHealthLabel(bl, healthAge, haveHealth,
+                                                t.deadStreak[s],
+                                                t.hitsForHealth);
       j += "\"}";
     }
     j += "]}";
