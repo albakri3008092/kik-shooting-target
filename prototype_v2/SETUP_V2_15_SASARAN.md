@@ -265,9 +265,26 @@ Ketuk:
 
 ### 6.4 Test sensor health
 
+Sistem ada 4 status sensor:
+
+| Status | Warna | Maksud |
+|---|---|---|
+| **OK** | Hijau | Baseline stabil < 1000 |
+| **NOISY** | Kuning | Baseline 1000-2999 (terapung / interference) |
+| **ROSAK** | Merah berkelip | Baseline ≥ 3000 (pin shorted to 3.3V) |
+| **MATI** | Merah berkelip | Wayar tercabut — sensor tak respond pada hits walaupun sasaran ditembak |
+| **?** | Kelabu | Tiada paket > 8 saat (sasaran offline) |
+
+#### Test NOISY (sentuhan)
 1. Pegang wayar signal S2 dengan jari (sentuh metal langsung).
 2. Dalam 2-3 saat, badge **S2** patut tukar **NOISY** kuning.
 3. Lepas jari → kembali **OK** hijau.
+
+#### Test MATI (wayar tercabut)
+1. Cabut wayar signal piezo S3 dari header GPIO 34.
+2. Tembak / ketuk sasaran 3-5 kali (ketuk papan, sensor lain akan register).
+3. Selepas 3 hits dengan S3 silent → badge **S3** tukar ke **MATI** merah berkelip.
+4. Sambung balik wayar → ketuk lagi → kembali **OK** selepas 1 hit yang register.
 
 ---
 
