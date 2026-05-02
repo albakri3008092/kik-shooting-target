@@ -658,7 +658,7 @@ function clearDots(i){ dotsHistory[i] = []; }
 const lastSeq = {};
 async function tick(){
   try{
-    const r = await fetch('/status');
+    const r = await fetch('/status', {cache:'no-store'});
     const d = await r.json();
     document.getElementById('dot').classList.add('on');
     document.getElementById('conn').textContent = 'Tersambung';
@@ -751,7 +751,7 @@ function renderFeed(recent){
       <div class="z">Z${r.zone}=${r.score}</div>
       <div class="z">${zoneLabel(r.zone)}</div>
       <div class="xy">x=${x} y=${y}</div>
-      <div class="sp">${r.split>=0 ? r.split+'ms' : '—'}</div>
+      <div class="sp">${r.split>0 ? r.split+'ms' : '—'}</div>
     `;
     f.appendChild(row);
   }
@@ -1078,6 +1078,11 @@ static void handleStatus() {
     j += ",\"lines\":";       j += (uint32_t)gLogLines;
   j += "}";
   j += "}";
+  // Disable HTTP caching: the dashboard polls /status every 200 ms and
+  // mobile browsers (the primary deployment target — tablets/phones) can
+  // aggressively cache responses without an explicit directive, leading
+  // to stale hit counts / scores / sensor health on screen.
+  server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", j);
 }
 
