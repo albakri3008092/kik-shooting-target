@@ -173,6 +173,23 @@ struct TargetState {
   // physically inspect the wire.
   uint8_t  deadStreak[4] = {0, 0, 0, 0};
   uint16_t hitsForHealth = 0;   // saturating counter, used as bootstrap
+
+  // Idle dead-sensor detection. The hit-based check above only fires when
+  // the user is actually shooting/tapping the board. In a freshly-built
+  // prototype where only one piezo is wired, cutting that piezo means
+  // NO sensor crosses the trigger threshold and the central never sees
+  // a HitPacketV2 at all — so the hit-based streak never advances. We
+  // therefore also watch the steady-state baseline reported in every
+  // HealthPacket: a wire that is open (with the GPIO's internal pull-
+  // down or external 1 MΩ to GND) sits at exactly 0 ADC counts, while
+  // a connected piezo at rest floats with a small noise floor (typically
+  // ~30-150). After ZERO_BASELINE_STREAK_N consecutive Health reports
+  // showing baseline <= ZERO_BASELINE_THRESH, we surface the sensor as
+  // "dead" even without any hits. Caveats: GPIO 34/35 are input-only
+  // and have no internal pull-down, so without the production resistor
+  // they may read 0 even when wired (floating); that is a hardware
+  // limitation the user already plans to fix with 1 MO pull-downs.
+  uint8_t  zeroBaselineStreak[4] = {0, 0, 0, 0};
 };
 static TargetState T[NUM_TARGETS + 1];   // index 1..NUM_TARGETS
 
@@ -868,6 +885,15 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
     for (int i = 0; i < 4; i++) {
       t.baseline[i] = h.baseline[i];
       t.peak[i]     = h.peak[i];
+      // Idle baseline-zero streak: bumps every Health report (~2 s) where
+      // this sensor is sitting at the pull-down floor. Reset the moment
+      // the line moves off zero (genuine piezo even at rest will float
+      // around 30-150 ADC counts).
+      if (h.baseline[i] <= ZERO_BASELINE_THRESH) {
+        if (t.zeroBaselineStreak[i] < 0xFF) t.zeroBaselineStreak[i]++;
+      } else {
+        t.zeroBaselineStreak[i] = 0;
+      }
     }
     return;
   }
@@ -1017,18 +1043,27 @@ static void handleRoot() {
 // and let us flag a wire-disconnect (which a baseline check alone
 // cannot detect, because a broken wire and an idle sensor both sit at
 // ~0 V due to the pull-down).
-static const uint8_t  DEAD_STREAK_N = 3;   // silent hits in a row
-static const uint16_t DEAD_MIN_HITS = 3;   // need >= this many hits to trust streak
+static const uint8_t  DEAD_STREAK_N           = 3;   // silent hits in a row
+static const uint16_t DEAD_MIN_HITS           = 3;   // need >= this many hits to trust streak
+static const uint16_t ZERO_BASELINE_THRESH    = 10;  // ADC counts treated as "open line"
+static const uint8_t  ZERO_BASELINE_STREAK_N  = 5;   // ~5 health reports x 2 s = ~10 s
 static const char* sensorHealthLabel(uint16_t baselineV, uint32_t healthAge,
                                      bool haveHealth,
                                      uint8_t deadStreak,
-                                     uint16_t hitsForHealth) {
+                                     uint16_t hitsForHealth,
+                                     uint8_t zeroBaselineStreak) {
   if (!haveHealth)         return "unknown";
   if (baselineV >= 3000)   return "broken";
   if (hitsForHealth >= DEAD_MIN_HITS && deadStreak >= DEAD_STREAK_N) {
     // Sensor failed to respond to several consecutive shots while other
     // sensors on the same target ARE registering activity — almost
     // certainly a wire/contact problem at this piezo.
+    return "dead";
+  }
+  if (zeroBaselineStreak >= ZERO_BASELINE_STREAK_N) {
+    // Sensor has been pinned at the pull-down floor for ~10 s of Health
+    // packets — same conclusion (wire open / piezo missing) without
+    // needing any shots to bootstrap.
     return "dead";
   }
   if (baselineV >= 1000)   return "noisy";
@@ -1090,7 +1125,8 @@ static void handleStatus() {
       j += ",\"pk\":" ; j += pk;
       j += ",\"h\":\""; j += sensorHealthLabel(bl, healthAge, haveHealth,
                                                 t.deadStreak[s],
-                                                t.hitsForHealth);
+                                                t.hitsForHealth,
+                                                t.zeroBaselineStreak[s]);
       j += "\"}";
     }
     j += "]}";
