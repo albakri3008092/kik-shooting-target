@@ -22,6 +22,8 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <soc/soc.h>
+#include <soc/rtc_cntl_reg.h>
 
 // ---------- EDIT THESE TWO LINES PER BOARD ----------
 // TARGET_ID must be unique across all 15 target boards. The central
@@ -114,20 +116,22 @@ static void onSent(const uint8_t* /*mac*/, esp_now_send_status_t status) {
 }
 
 void setup() {
-  // Brownout detector is left at its default-enabled setting. Disabling
-  // it (which we tried as a workaround for cheap USB cables that dip the
-  // 5V rail during WiFi TX) sounds harmless on paper, but in practice
-  // when the rail does dip far enough the chip ends up running with
-  // partially-corrupted RAM instead of cleanly resetting, producing
-  // mysterious panic-handler loops:
+  // Disable the ESP32 brownout detector. The user's bench setup is a
+  // single laptop USB-2 port (~500 mA budget) and there is no AC USB
+  // charger / quality power bank available locally; on that supply the
+  // 5V rail dips far enough during WiFi TX that BOD fires immediately
+  // and the board gets stuck in an `E BOD: Brownout detector was
+  // triggered` reset loop before setup() even finishes.
   //
-  //     Panic handler entered multiple times. Abort panic handling.
-  //     PC: 0x20033420  (DRAM, not code)  Backtrace: <-CORRUPTED
-  //
-  // With BOD enabled, the same bad cable shows up as a clean
-  // `E BOD: Brownout detector was triggered` reset that points the user
-  // straight at the hardware. The proper production fix is still a
-  // beefier 5V supply + bulk cap on the rail.
+  // Tradeoff: with BOD off, a sufficiently bad dip can corrupt RAM and
+  // produce a 'Panic handler entered multiple times' loop instead of a
+  // clean reset. We accept that risk because the alternative (BOD on)
+  // is *guaranteed* to fail on the same supply. Mitigations:
+  //   * Use USB 3.0 port if available (900 mA vs 500 mA budget).
+  //   * Short, thick data USB cable; not a charging-only cable.
+  //   * Production should add a bulk capacitor (470-1000 uF) on 5V.
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   Serial.begin(115200);
   pinMode(2, OUTPUT);
   analogReadResolution(12);

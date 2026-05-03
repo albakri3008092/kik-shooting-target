@@ -11,6 +11,8 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <soc/soc.h>
+#include <soc/rtc_cntl_reg.h>
 
 // ---------- EDIT THESE TWO LINES PER BOARD ----------
 #define TARGET_ID    1                                     // 1..15
@@ -83,12 +85,13 @@ static void onSent(const uint8_t* /*mac*/, esp_now_send_status_t status) {
 }
 
 void setup() {
-  // Brownout detector left at its default-enabled setting. See the
-  // matching note in prototype_v2/target_v2/target_v2.ino: disabling
-  // BOD on a marginal supply produces panic-handler loops with
-  // corrupted backtraces that are far harder to debug than a clean
-  // `E BOD: Brownout detector was triggered` reset. The proper fix is
-  // still a beefier 5V supply + bulk cap.
+  // Disable the ESP32 brownout detector. On the user's laptop-USB-only
+  // bench supply, BOD fires the moment WiFi transmits and locks the
+  // board into an `E BOD: Brownout detector was triggered` reset loop;
+  // see the longer note in prototype_v2/target_v2/target_v2.ino for
+  // tradeoffs and recommended hardware mitigations.
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   Serial.begin(115200);
   pinMode(2, OUTPUT);                    // status LED
   analogReadResolution(12);
