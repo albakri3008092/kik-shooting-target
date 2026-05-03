@@ -210,12 +210,17 @@ static const uint16_t DEAD_MIN_HITS             = 3;  // need >= this many hits 
 // SILENT_IN_ACTIVE_STREAK_N: how many consecutive Health windows we
 // require where (a) at least one OTHER sensor on this target saw
 // activity, and (b) THIS sensor stayed below the threshold, before
-// surfacing the sensor as MATI. 2 windows x 5 s gives ~10 s detection
-// latency on a moving / shot-at target while staying robust against a
-// single jittered packet. Idle targets (no sensor active anywhere)
-// leave every streak alone, so an undisturbed target stays "ok".
+// surfacing the sensor as MATI. 1 window = a single ~5 s active
+// window with this sensor silent is enough; tuned for the demo where
+// snappy MATI feedback after one tap on the board matters more than
+// surviving an isolated dropped Health packet. The differential
+// nature of the check (we require *another* sensor to have crossed
+// SILENT_ACTIVITY_THRESH in the same window) keeps it from
+// false-flagging idle targets even at this aggressive setting.
+// Idle targets (no sensor active anywhere) leave every streak alone,
+// so an undisturbed target stays "ok".
 static const uint16_t SILENT_ACTIVITY_THRESH    = 100;
-static const uint8_t  SILENT_IN_ACTIVE_STREAK_N = 2;
+static const uint8_t  SILENT_IN_ACTIVE_STREAK_N = 1;
 
 // ---------- Recent hits ring buffer ----------
 struct RecentHit {
