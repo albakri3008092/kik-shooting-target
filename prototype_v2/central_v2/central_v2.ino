@@ -178,35 +178,44 @@ struct TargetState {
   // the user is actually shooting/tapping the board. In a freshly-built
   // prototype where only one piezo is wired, cutting that piezo means
   // NO sensor crosses the trigger threshold and the central never sees
-  // a HitPacketV2 at all — so the hit-based streak never advances. We
-  // therefore also watch the steady-state baseline reported in every
-  // HealthPacket: a wire that is open (with the GPIO's internal pull-
-  // down or external 1 MΩ to GND) sits at exactly 0 ADC counts, while
-  // a connected piezo at rest floats with a small noise floor (typically
-  // ~30-150). After ZERO_BASELINE_STREAK_N consecutive Health reports
-  // showing baseline <= ZERO_BASELINE_THRESH, we surface the sensor as
-  // "dead" even without any hits. Caveats: GPIO 34/35 are input-only
-  // and have no internal pull-down, so without the production resistor
-  // they may read 0 even when wired (floating); that is a hardware
-  // limitation the user already plans to fix with 1 MO pull-downs.
-  uint8_t  zeroBaselineStreak[4] = {0, 0, 0, 0};
+  // a HitPacketV2 at all — so the hit-based streak never advances.
+  //
+  // We can't reliably tell a cut wire from a quiet, *connected* piezo
+  // by looking at one sensor alone: a piezo on a properly pulled-down
+  // pin reads ~0 ADC at rest just like an open wire. We CAN tell them
+  // apart by looking at *the other sensors on the same target* in the
+  // same 5-second Health window. If even one other sensor saw real
+  // activity (peak >= SILENT_ACTIVITY_THRESH) but this one stayed at
+  // the floor, the most likely explanation is that this sensor is
+  // disconnected. After SILENT_IN_ACTIVE_STREAK_N such windows we
+  // surface it as "dead". Idle target (no movement at all on any
+  // sensor) leaves the streak untouched, so an undisturbed target
+  // doesn't false-flag every sensor as MATI.
+  uint8_t  silentInActiveStreak[4] = {0, 0, 0, 0};
 };
 static TargetState T[NUM_TARGETS + 1];   // index 1..NUM_TARGETS
 
-// Sensor-health classification thresholds. Declared up here (rather than
-// next to sensorHealthLabel below) so onEspNow can reference
-// ZERO_BASELINE_THRESH while updating the per-sensor streak.
-static const uint8_t  DEAD_STREAK_N           = 3;   // silent hits in a row
-static const uint16_t DEAD_MIN_HITS           = 3;   // need >= this many hits to trust streak
-// 50 counts \u2248 1.2% of full-scale on a 12-bit ADC. A connected piezo on
-// GPIO 32/33 idles around BASELINE_SEED (=150) and a working piezo on
-// floating GPIO 34/35 still picks up enough ambient vibration to push
-// peak[] well above this floor inside a 5-second window. An *open*
-// wire dangling off the pin reads mostly 0 (internal pull-down) plus
-// occasional EMI / ADC-channel ghost noise of a few tens of counts \u2014
-// a threshold of 50 catches that without false-flagging real piezos.
-static const uint16_t ZERO_BASELINE_THRESH    = 50;  // ADC counts treated as "open line"
-static const uint8_t  ZERO_BASELINE_STREAK_N  = 1;   // 1 health report x 5 s = 5 s
+// Sensor-health classification thresholds. Declared up here (rather
+// than next to sensorHealthLabel below) so onEspNow can reference
+// them while updating the per-sensor streak.
+static const uint8_t  DEAD_STREAK_N             = 3;  // silent hits in a row
+static const uint16_t DEAD_MIN_HITS             = 3;  // need >= this many hits to trust streak
+// SILENT_ACTIVITY_THRESH: peak[] (in ADC counts) at or above this
+// inside a 5-second Health window means "this sensor saw real activity
+// in the window". 100 ~= 2.4 % of 12-bit full-scale: well above the
+// open-wire / EMI noise floor (typically <30) but well under the peaks
+// produced by an actual hit (>= TRIG_DELTA = 800 plus baseline) or
+// even by a board nudge picked up by a connected piezo (peak ~ 200+).
+//
+// SILENT_IN_ACTIVE_STREAK_N: how many consecutive Health windows we
+// require where (a) at least one OTHER sensor on this target saw
+// activity, and (b) THIS sensor stayed below the threshold, before
+// surfacing the sensor as MATI. 2 windows x 5 s gives ~10 s detection
+// latency on a moving / shot-at target while staying robust against a
+// single jittered packet. Idle targets (no sensor active anywhere)
+// leave every streak alone, so an undisturbed target stays "ok".
+static const uint16_t SILENT_ACTIVITY_THRESH    = 100;
+static const uint8_t  SILENT_IN_ACTIVE_STREAK_N = 2;
 
 // ---------- Recent hits ring buffer ----------
 struct RecentHit {
@@ -900,30 +909,31 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
     for (int i = 0; i < 4; i++) {
       t.baseline[i] = h.baseline[i];
       t.peak[i]     = h.peak[i];
-      // Idle silent-sensor streak: bumps every Health report (5 s) where
-      // this sensor produced *no* observable activity at all in the
-      // window — both the EMA baseline AND the in-window peak sample
-      // sit at the pull-down floor. Either alone is too easy to fool:
-      //   * baseline could be 0 even on a connected piezo if its
-      //     intrinsic noise is below the EMA shift.
-      //   * peak could be 0 because no shot hit during the window.
-      // But a connected piezo always produces SOME ADC variance over
-      // 1 s of sampling (intrinsic charge leakage + environmental
-      // micro-vibration), so peak[i] climbs above the noise threshold
-      // every interval. A wire that is open with the GPIO sitting on
-      // its internal pull-down stays exactly at 0 for both fields.
-      // After ZERO_BASELINE_STREAK_N (= 1) consecutive 5-second Health
-      // reports without activity, surface the sensor as "dead". The
-      // first window after boot is allowed (haveHealth check + baseline
-      // seed both keep us in "unknown" / "ok" until then), so MATI
-      // appears 5–10 s after a wire is cut and clears as soon as the
-      // sensor moves off the floor again.
-      if (h.baseline[i] <= ZERO_BASELINE_THRESH &&
-          h.peak[i]     <= ZERO_BASELINE_THRESH) {
-        if (t.zeroBaselineStreak[i] < 0xFF) t.zeroBaselineStreak[i]++;
-      } else {
-        t.zeroBaselineStreak[i] = 0;
+    }
+    // Differential silent-sensor detection. We can't reliably tell a
+    // cut wire from a quiet, *connected* piezo by looking at one
+    // sensor in isolation — both sit at ADC 0 when nothing hits the
+    // board. What we CAN check is: in this 5-second window, did at
+    // least one OTHER sensor on the same target see real activity?
+    // If yes, any sensor that stayed at the floor in the same window
+    // is suspect (cut wire / dead piezo). If no, the whole target was
+    // just idle and we don't penalise anyone.
+    uint16_t maxOtherPeak[4] = {0, 0, 0, 0};
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 4; j++) {
+        if (j != i && h.peak[j] > maxOtherPeak[i]) maxOtherPeak[i] = h.peak[j];
       }
+    }
+    for (int i = 0; i < 4; i++) {
+      if (h.peak[i] >= SILENT_ACTIVITY_THRESH) {
+        // This sensor itself was active — definitely alive, clear streak.
+        t.silentInActiveStreak[i] = 0;
+      } else if (maxOtherPeak[i] >= SILENT_ACTIVITY_THRESH) {
+        // Other sensors active but this one stayed silent — suspicious.
+        if (t.silentInActiveStreak[i] < 0xFF) t.silentInActiveStreak[i]++;
+      }
+      // else: whole-target idle window; leave streak unchanged so a
+      // long undisturbed period doesn't either set or clear MATI.
     }
     // Echo received Health to Serial so a user with a laptop hooked to
     // the central can read the real ADC numbers without the dashboard
@@ -937,8 +947,8 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
                   (unsigned)h.baseline[2], (unsigned)h.baseline[3],
                   (unsigned)h.peak[0], (unsigned)h.peak[1],
                   (unsigned)h.peak[2], (unsigned)h.peak[3],
-                  (unsigned)t.zeroBaselineStreak[0], (unsigned)t.zeroBaselineStreak[1],
-                  (unsigned)t.zeroBaselineStreak[2], (unsigned)t.zeroBaselineStreak[3]);
+                  (unsigned)t.silentInActiveStreak[0], (unsigned)t.silentInActiveStreak[1],
+                  (unsigned)t.silentInActiveStreak[2], (unsigned)t.silentInActiveStreak[3]);
     return;
   }
   if (ptype == 2) {
@@ -1091,7 +1101,7 @@ static const char* sensorHealthLabel(uint16_t baselineV, uint32_t healthAge,
                                      bool haveHealth,
                                      uint8_t deadStreak,
                                      uint16_t hitsForHealth,
-                                     uint8_t zeroBaselineStreak) {
+                                     uint8_t silentInActiveStreak) {
   if (!haveHealth)         return "unknown";
   if (baselineV >= 3000)   return "broken";
   if (hitsForHealth >= DEAD_MIN_HITS && deadStreak >= DEAD_STREAK_N) {
@@ -1100,10 +1110,10 @@ static const char* sensorHealthLabel(uint16_t baselineV, uint32_t healthAge,
     // certainly a wire/contact problem at this piezo.
     return "dead";
   }
-  if (zeroBaselineStreak >= ZERO_BASELINE_STREAK_N) {
-    // Sensor has been pinned at the pull-down floor for ~10 s of Health
-    // packets — same conclusion (wire open / piezo missing) without
-    // needing any shots to bootstrap.
+  if (silentInActiveStreak >= SILENT_IN_ACTIVE_STREAK_N) {
+    // Same conclusion as the hit-based path but driven from Health
+    // packets: in N back-to-back Health windows where at least one
+    // OTHER sensor saw activity, this one stayed at the floor.
     return "dead";
   }
   if (baselineV >= 1000)   return "noisy";
@@ -1169,7 +1179,7 @@ static void handleStatus() {
       j += ",\"h\":\""; j += sensorHealthLabel(bl, healthAge, haveHealth,
                                                 t.deadStreak[s],
                                                 t.hitsForHealth,
-                                                t.zeroBaselineStreak[s]);
+                                                t.silentInActiveStreak[s]);
       j += "\"}";
     }
     j += "]}";
