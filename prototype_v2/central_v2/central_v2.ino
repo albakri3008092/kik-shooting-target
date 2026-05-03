@@ -925,6 +925,20 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
         t.zeroBaselineStreak[i] = 0;
       }
     }
+    // Echo received Health to Serial so a user with a laptop hooked to
+    // the central can read the real ADC numbers without the dashboard
+    // (mobile Chrome silently drops `title=` tooltips, which was our
+    // only previous way to expose these). Format mirrors the target
+    // Serial print so identical lines on both ends prove what got
+    // transmitted vs received.
+    Serial.printf("Health rx T=%u bl=[%u,%u,%u,%u] pk=[%u,%u,%u,%u] streak=[%u,%u,%u,%u]\n",
+                  (unsigned)tid,
+                  (unsigned)h.baseline[0], (unsigned)h.baseline[1],
+                  (unsigned)h.baseline[2], (unsigned)h.baseline[3],
+                  (unsigned)h.peak[0], (unsigned)h.peak[1],
+                  (unsigned)h.peak[2], (unsigned)h.peak[3],
+                  (unsigned)t.zeroBaselineStreak[0], (unsigned)t.zeroBaselineStreak[1],
+                  (unsigned)t.zeroBaselineStreak[2], (unsigned)t.zeroBaselineStreak[3]);
     return;
   }
   if (ptype == 2) {
