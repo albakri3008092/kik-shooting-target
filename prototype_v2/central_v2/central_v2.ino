@@ -199,7 +199,7 @@ static TargetState T[NUM_TARGETS + 1];   // index 1..NUM_TARGETS
 static const uint8_t  DEAD_STREAK_N           = 3;   // silent hits in a row
 static const uint16_t DEAD_MIN_HITS           = 3;   // need >= this many hits to trust streak
 static const uint16_t ZERO_BASELINE_THRESH    = 10;  // ADC counts treated as "open line"
-static const uint8_t  ZERO_BASELINE_STREAK_N  = 5;   // ~5 health reports x 2 s = ~10 s
+static const uint8_t  ZERO_BASELINE_STREAK_N  = 1;   // 1 health report x 5 s = 5 s
 
 // ---------- Recent hits ring buffer ----------
 struct RecentHit {
@@ -893,11 +893,26 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
     for (int i = 0; i < 4; i++) {
       t.baseline[i] = h.baseline[i];
       t.peak[i]     = h.peak[i];
-      // Idle baseline-zero streak: bumps every Health report (~2 s) where
-      // this sensor is sitting at the pull-down floor. Reset the moment
-      // the line moves off zero (genuine piezo even at rest will float
-      // around 30-150 ADC counts).
-      if (h.baseline[i] <= ZERO_BASELINE_THRESH) {
+      // Idle silent-sensor streak: bumps every Health report (5 s) where
+      // this sensor produced *no* observable activity at all in the
+      // window — both the EMA baseline AND the in-window peak sample
+      // sit at the pull-down floor. Either alone is too easy to fool:
+      //   * baseline could be 0 even on a connected piezo if its
+      //     intrinsic noise is below the EMA shift.
+      //   * peak could be 0 because no shot hit during the window.
+      // But a connected piezo always produces SOME ADC variance over
+      // 1 s of sampling (intrinsic charge leakage + environmental
+      // micro-vibration), so peak[i] climbs above the noise threshold
+      // every interval. A wire that is open with the GPIO sitting on
+      // its internal pull-down stays exactly at 0 for both fields.
+      // After ZERO_BASELINE_STREAK_N (= 1) consecutive 5-second Health
+      // reports without activity, surface the sensor as "dead". The
+      // first window after boot is allowed (haveHealth check + baseline
+      // seed both keep us in "unknown" / "ok" until then), so MATI
+      // appears 5–10 s after a wire is cut and clears as soon as the
+      // sensor moves off the floor again.
+      if (h.baseline[i] <= ZERO_BASELINE_THRESH &&
+          h.peak[i]     <= ZERO_BASELINE_THRESH) {
         if (t.zeroBaselineStreak[i] < 0xFF) t.zeroBaselineStreak[i]++;
       } else {
         t.zeroBaselineStreak[i] = 0;
@@ -1118,7 +1133,10 @@ static void handleStatus() {
     j += ",\"ago\":";         j += (uint32_t)(t.lastHitMs ? (millis() - t.lastHitMs) : 0);
     // Per-sensor health.
     uint32_t healthAge = t.lastHealthMs ? (millis() - t.lastHealthMs) : 0xFFFFFFFFu;
-    bool haveHealth = t.lastHealthMs && healthAge < 8000;
+    // Health packet now arrives every 5 s; allow ~2.5x interval so a
+    // single dropped/jittered packet doesn't flip every sensor to
+    // "unknown" between reports.
+    bool haveHealth = t.lastHealthMs && healthAge < 12000;
     j += ",\"healthAge\":"; j += (uint32_t)healthAge;
     j += ",\"sensors\":[";
     for (int s = 0; s < 4; s++) {

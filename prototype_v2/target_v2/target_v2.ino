@@ -48,7 +48,7 @@ static const uint16_t BASELINE_MAX     = 1500;  // clamp baseline so trig <= 409
 static const uint16_t HIT_WINDOW_MS    = 30;    // time to collect peak on all sensors
 static const uint16_t DEBOUNCE_MS      = 60;    // gap before next hit can start
 static const uint16_t HB_INTERVAL_MS   = 5000;  // heartbeat
-static const uint16_t HEALTH_INTERVAL_MS = 2000;// per-sensor health
+static const uint16_t HEALTH_INTERVAL_MS = 5000;// per-sensor health (every 5 s)
 static const uint16_t BASELINE_SEED    = 150;
 static const uint8_t  BASELINE_SHIFT   = 5;     // EMA: new = old*31/32 + sample/32
 
