@@ -66,7 +66,18 @@ static uint16_t prevSample[4] = {0, 0, 0, 0};  // previous ADC sample (for risin
 static uint32_t lastHeartbeat = 0;
 static uint32_t lastHealth    = 0;
 
+// The ESP32 Arduino core changed the send-callback signature in 3.3:
+//   * 2.x and 3.0..3.2:   void(const uint8_t* mac, esp_now_send_status_t)
+//   * 3.3+ :              void(const wifi_tx_info_t* info, esp_now_send_status_t)
+// Pick the right prototype at compile time so this sketch builds cleanly
+// across all three eras.
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && \
+    (ESP_ARDUINO_VERSION_MAJOR > 3 || \
+     (ESP_ARDUINO_VERSION_MAJOR == 3 && ESP_ARDUINO_VERSION_MINOR >= 3))
+static void onSent(const wifi_tx_info_t* /*info*/, esp_now_send_status_t status) {
+#else
 static void onSent(const uint8_t* /*mac*/, esp_now_send_status_t status) {
+#endif
   // Blink built-in LED (GPIO2) on success
   digitalWrite(2, status == ESP_NOW_SEND_SUCCESS ? HIGH : LOW);
 }

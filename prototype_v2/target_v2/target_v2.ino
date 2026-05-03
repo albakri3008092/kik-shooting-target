@@ -97,7 +97,19 @@ static uint32_t  lastHeartbeat   = 0;
 static uint32_t  lastHealth      = 0;
 
 // ---------- ESP-NOW ----------
+// The send-callback signature changed twice in the ESP32 Arduino core:
+//   * 2.x and 3.0..3.2:   void(const uint8_t* mac, esp_now_send_status_t)
+//   * 3.3+ :              void(const wifi_tx_info_t* info, esp_now_send_status_t)
+// We pick the right prototype at compile time so the same source file
+// builds cleanly across all three eras (CI also exercises 2.0.17, 3.1.3,
+// and 3.3.x).
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && \
+    (ESP_ARDUINO_VERSION_MAJOR > 3 || \
+     (ESP_ARDUINO_VERSION_MAJOR == 3 && ESP_ARDUINO_VERSION_MINOR >= 3))
+static void onSent(const wifi_tx_info_t* /*info*/, esp_now_send_status_t status) {
+#else
 static void onSent(const uint8_t* /*mac*/, esp_now_send_status_t status) {
+#endif
   digitalWrite(2, status == ESP_NOW_SEND_SUCCESS ? HIGH : LOW);
 }
 
