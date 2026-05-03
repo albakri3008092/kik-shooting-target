@@ -493,6 +493,30 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
   .hs.big{background:linear-gradient(135deg,rgba(0,229,168,.18),rgba(76,201,240,.10));
           border-color:rgba(0,229,168,.4)}
   .hs.big .num{font-size:72px;color:var(--p)}
+  /* ---------- Global target board (bullseye) ---------- */
+  .board-wrap{
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+    padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--bd);
+  }
+  .board-label{
+    font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.7px;
+    align-self:flex-start;
+  }
+  .board-label small{font-weight:500;text-transform:none;letter-spacing:0;margin-left:6px}
+  .board{
+    position:relative;width:100%;max-width:380px;aspect-ratio:1/1;
+    background:var(--surf2);border:1px solid var(--bd);border-radius:18px;
+  }
+  .board canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:18px}
+  .board .slabel{
+    position:absolute;font-size:11px;font-weight:800;letter-spacing:.6px;
+    color:var(--mut);background:var(--surf);border:1px solid var(--bd);
+    border-radius:8px;padding:3px 7px;
+  }
+  .board .slabel.s1{top:8px;left:8px}
+  .board .slabel.s2{top:8px;right:8px}
+  .board .slabel.s3{bottom:8px;left:8px}
+  .board .slabel.s4{bottom:8px;right:8px}
   /* ---------- Tile grid ---------- */
   .tile-label{
     font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.7px;
@@ -636,6 +660,16 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
     <div class="hs big">
       <div class="lbl">Jumlah Hit (semua sasaran)</div>
       <div class="num" id="totalHits">0</div>
+    </div>
+  </div>
+  <div class="board-wrap">
+    <div class="board-label">Papan Sasaran <small>(semua 15 sasaran &mdash; titik pudar selepas 5s)</small></div>
+    <div class="board" id="boardWrap">
+      <canvas id="board" width="380" height="380"></canvas>
+      <div class="slabel s1">S1</div>
+      <div class="slabel s2">S2</div>
+      <div class="slabel s3">S3</div>
+      <div class="slabel s4">S4</div>
     </div>
   </div>
   <div class="tile-label">Sasaran <small>(tap untuk detail)</small></div>
@@ -800,12 +834,103 @@ async function tick(){
     document.getElementById('totCount').textContent = N;
     document.getElementById('totalHits').textContent = totalHits;
     renderFeed(d.recent || []);
+    drawBoard(d);
     const ll = document.getElementById('loglines');
     if(ll) ll.textContent = (d.log && typeof d.log.lines === 'number') ? d.log.lines : '0';
     refreshModal();
   } catch(e){
     document.getElementById('dot').classList.remove('on');
     document.getElementById('conn').textContent = 'Terputus';
+  }
+}
+
+// ---------- global target board (bullseye + S1..S4 labels) ----------
+// We track the dashboard's first-seen wallclock for each hit (keyed by
+// target board's r.ts) so we can fade dots out over BOARD_FADE_MS.
+const BOARD_FADE_MS = 5000;
+const seenAt = new Map();   // key = r.t + ':' + r.ts -> dashboard arrival ms
+function deadTargetIds(d){
+  const out = new Set();
+  for(const t of (d.targets || [])){
+    for(const sd of (t.sensors || [])){
+      if(sd.h === 'dead' || sd.h === 'broken'){ out.add(t.id); break; }
+    }
+  }
+  return out;
+}
+function drawBoard(d){
+  const cv = document.getElementById('board');
+  if(!cv) return;
+  // Match canvas internal pixel size to its rendered size for crisp drawing.
+  const rect = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.max(1, Math.round(rect.width  * dpr));
+  const H = Math.max(1, Math.round(rect.height * dpr));
+  if(cv.width !== W) cv.width = W;
+  if(cv.height !== H) cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  const cx = W/2, cy = H/2;
+  // 5 concentric rings, no scoring numbers — purely visual.
+  const R = Math.min(W, H) * 0.46;
+  const ringR = [R*0.20, R*0.40, R*0.60, R*0.80, R*1.00];
+  ctx.lineWidth = Math.max(1, dpr);
+  ctx.strokeStyle = 'rgba(136,150,184,.30)';
+  for(const rr of ringR){
+    ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI*2); ctx.stroke();
+  }
+  // Crosshairs
+  ctx.strokeStyle = 'rgba(136,150,184,.18)';
+  ctx.beginPath();
+  ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+  ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+  ctx.stroke();
+  // Centre marker
+  ctx.fillStyle = 'rgba(0,229,168,.55)';
+  ctx.beginPath(); ctx.arc(cx, cy, Math.max(2, dpr*1.5), 0, Math.PI*2); ctx.fill();
+  // Plot recent hits.
+  const recent = d.recent || [];
+  const dead = deadTargetIds(d);
+  const now = Date.now();
+  // Update seen map for every hit currently in recent[].
+  const keep = new Set();
+  for(const r of recent){
+    const k = r.t + ':' + r.ts;
+    keep.add(k);
+    if(!seenAt.has(k)) seenAt.set(k, now);
+  }
+  // Garbage-collect entries no longer in recent[].
+  for(const k of seenAt.keys()){
+    if(!keep.has(k)) seenAt.delete(k);
+  }
+  // Draw each hit with age-based opacity. Coords from x10/y10 normalized to [-1,+1].
+  for(const r of recent){
+    const k = r.t + ':' + r.ts;
+    const seen = seenAt.get(k) || now;
+    const age = now - seen;
+    if(age > BOARD_FADE_MS) continue;
+    const alpha = 1 - (age / BOARD_FADE_MS);
+    const nx = (r.x10 || 0) / 1000;
+    const ny = (r.y10 || 0) / 1000;
+    // Map [-1,+1] target space to canvas. Note: in firmware S1 is top-left
+    // with Y=+1, so canvas-Y = cy - ny*R (flip).
+    const px = cx + nx * R;
+    const py = cy - ny * R;
+    const isDead = dead.has(r.t);
+    const fill   = isDead ? `rgba(255,77,109,${alpha})`   : `rgba(0,229,168,${alpha})`;
+    const stroke = isDead ? `rgba(255,77,109,${alpha*0.85})` : `rgba(0,229,168,${alpha*0.85})`;
+    ctx.beginPath();
+    ctx.fillStyle = fill;
+    ctx.arc(px, py, Math.max(5*dpr, 5), 0, Math.PI*2);
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, dpr*1.2);
+    ctx.strokeStyle = stroke;
+    ctx.stroke();
+    // Target ID label next to the dot, also fades.
+    ctx.fillStyle = `rgba(244,246,251,${alpha})`;
+    ctx.font = `${Math.round(11*dpr)}px -apple-system,Segoe UI,Roboto,Arial,sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.fillText('T'+r.t, px + 9*dpr, py - 9*dpr);
   }
 }
 
