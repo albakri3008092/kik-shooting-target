@@ -66,6 +66,10 @@ jobs:
         run: arduino-cli compile --fqbn esp32:esp32:esp32 prototype_v2/target_v2
       - name: Compile prototype_v2/central_v2
         run: arduino-cli compile --fqbn esp32:esp32:esp32 prototype_v2/central_v2
+      - name: Compile prototype_v3/target_v3
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 prototype_v3/target_v3
+      - name: Compile prototype_v3/central_v3
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 prototype_v3/central_v3
 
   demo:
     name: Smoke-test demo dashboard
