@@ -440,459 +440,415 @@ static const char INDEX_HTML[] PROGMEM = R"RAW(
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>KIK Target V2</title>
+<title>KIK Target V3</title>
 <style>
   :root{
     --bg:#0b1221;--surf:#162036;--surf2:#1e2b4a;--bd:#263556;
     --tx:#f4f6fb;--mut:#8896b8;
     --p:#00e5a8;--i:#4cc9f0;--a:#b56cff;--d:#ff4d6d;--w:#ffd43b;
-    --s1:#ff4d6d;--s2:#ffd43b;--s3:#4cc9f0;--s4:#00e5a8;
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
   body{
     font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
     background:radial-gradient(1200px 500px at 0% -10%,rgba(0,229,168,.14),transparent 60%),
-               radial-gradient(1000px 500px at 100% 0%,rgba(181,108,255,.12),transparent 60%),
+               radial-gradient(1000px 500px at 100% 0%,rgba(76,201,240,.10),transparent 60%),
                var(--bg);
-    color:var(--tx);min-height:100vh;padding:14px;
+    color:var(--tx);min-height:100vh;padding:18px;
   }
-  header{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+  /* ---------- Header ---------- */
+  header{
+    display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;
+  }
   .logo{
-    width:42px;height:42px;border-radius:12px;
+    width:48px;height:48px;border-radius:14px;
     background:linear-gradient(135deg,var(--p),var(--i));
-    display:grid;place-items:center;font-weight:900;font-size:19px;color:#0b1221;
+    display:grid;place-items:center;font-weight:900;font-size:21px;color:#0b1221;
   }
-  h1{font-size:18px;letter-spacing:.4px}
-  h1 small{color:var(--mut);font-weight:500;font-size:12px;display:block}
+  h1{font-size:20px;letter-spacing:.4px}
+  h1 small{color:var(--mut);font-weight:500;font-size:12px;display:block;margin-top:2px}
   .pill{
     margin-left:auto;display:inline-flex;align-items:center;gap:8px;
-    padding:6px 12px;border:1px solid var(--bd);border-radius:999px;
-    background:rgba(255,255,255,.04);font-size:12px;color:var(--mut);
+    padding:8px 14px;border:1px solid var(--bd);border-radius:999px;
+    background:rgba(255,255,255,.04);font-size:13px;color:var(--mut);
   }
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--mut)}
-  .dot.on{background:var(--p);box-shadow:0 0 10px var(--p)}
-  .stat-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}
-  .stat{
-    background:var(--surf);border:1px solid var(--bd);border-radius:14px;padding:10px 12px;
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--mut)}
+  .dot.on{background:var(--p);box-shadow:0 0 12px var(--p)}
+  /* ---------- Hero card ---------- */
+  .hero{
+    background:var(--surf);border:1px solid var(--bd);border-radius:20px;
+    padding:22px;margin-bottom:18px;
   }
-  .stat .l{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px}
-  .stat .v{font-size:20px;font-weight:800;margin-top:2px}
-  .stat .v small{font-size:11px;color:var(--mut);font-weight:500}
-  /* With 15 cards we want more density. minmax(260px,1fr) lets a typical
-     1024px-wide tablet fit 3 cards per row instead of 2, and a 1280px
-     desktop fit 4. Cards stay readable because the per-target canvas
-     stays square via aspect-ratio:1/1. */
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-  .card{
-    background:var(--surf);border:1px solid var(--bd);border-radius:18px;
-    padding:14px;display:flex;flex-direction:column;gap:10px;
+  .hero-stats{
+    display:grid;grid-template-columns:1fr 2fr;gap:18px;
+    padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--bd);
   }
-  .card.off{opacity:.4}
-  .card-head{display:flex;align-items:center;gap:10px}
-  .badge{
-    background:var(--surf2);border:1px solid var(--bd);
-    border-radius:999px;padding:4px 9px;font-size:11px;color:var(--mut);
+  .hs{
+    background:var(--surf2);border:1px solid var(--bd);border-radius:16px;
+    padding:18px 22px;display:flex;flex-direction:column;justify-content:center;
   }
-  .badge.online{color:var(--p);border-color:rgba(0,229,168,.4)}
-  .ttl{font-size:15px;font-weight:800;letter-spacing:.4px}
-  .ttl small{color:var(--mut);font-weight:500;font-size:11px}
-  .target-vis{
-    width:100%;aspect-ratio:1/1;background:#0d1628;
-    border-radius:14px;border:1px solid var(--bd);position:relative;overflow:hidden;
+  .hs .lbl{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px}
+  .hs .num{font-size:48px;font-weight:900;line-height:1.05;margin-top:6px}
+  .hs .num small{font-size:20px;color:var(--mut);font-weight:600;margin-left:4px}
+  .hs.big{background:linear-gradient(135deg,rgba(0,229,168,.18),rgba(76,201,240,.10));
+          border-color:rgba(0,229,168,.4)}
+  .hs.big .num{font-size:72px;color:var(--p)}
+  /* ---------- Tile grid ---------- */
+  .tile-label{
+    font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.7px;
+    margin-bottom:10px;
   }
-  .target-vis canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-  .stats2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:12px}
-  .stats2 .k{
-    background:var(--surf2);border:1px solid var(--bd);border-radius:10px;
-    padding:7px 9px;display:flex;align-items:center;gap:6px;
+  .tile-label small{font-weight:500;text-transform:none;letter-spacing:0;margin-left:6px}
+  .tile-grid{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:10px;
   }
-  .stats2 .k b{color:var(--mut);text-transform:uppercase;font-size:10px;letter-spacing:.5px}
-  .stats2 .k span{margin-left:auto;font-weight:800;font-size:14px}
-  .health-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  @media (max-width:720px){
+    .tile-grid{grid-template-columns:repeat(3,1fr)}
+    .hero-stats{grid-template-columns:1fr;gap:12px}
+    .hs.big .num{font-size:56px}
+  }
+  .tile{
+    position:relative;background:var(--surf2);border:2px solid var(--bd);
+    border-radius:14px;padding:14px 8px;text-align:center;cursor:pointer;
+    transition:transform .12s ease,border-color .12s ease,background .12s ease;
+    user-select:none;-webkit-tap-highlight-color:transparent;
+    min-height:96px;display:flex;flex-direction:column;justify-content:center;gap:4px;
+  }
+  .tile:hover{transform:translateY(-2px)}
+  .tile:active{transform:translateY(0)}
+  .tile .tnum{font-size:13px;color:var(--mut);font-weight:700;letter-spacing:.5px}
+  .tile .thits{font-size:32px;font-weight:900;line-height:1}
+  .tile .tlast{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;
+               margin-top:2px;min-height:12px}
+  .tile.online{border-color:rgba(0,229,168,.45);background:rgba(0,229,168,.06)}
+  .tile.online .thits{color:var(--p)}
+  .tile.offline{opacity:.42}
+  .tile.offline .thits{color:var(--mut)}
+  .tile.dead{
+    border-color:rgba(255,77,109,.55);background:rgba(255,77,109,.10);
+    animation:tileBlink 1.6s ease-in-out infinite;
+  }
+  .tile.dead .thits{color:var(--d)}
+  @keyframes tileBlink{50%{background:rgba(255,77,109,.22)}}
+  .tile-legend{
+    display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;
+    font-size:11px;color:var(--mut);
+  }
+  .tile-legend .lg{display:inline-block;width:9px;height:9px;border-radius:50%;
+                   margin-right:6px;vertical-align:middle}
+  .tile-legend .lg.ok{background:var(--p);box-shadow:0 0 6px var(--p)}
+  .tile-legend .lg.off{background:var(--mut)}
+  .tile-legend .lg.dead{background:var(--d);box-shadow:0 0 6px var(--d)}
+  /* ---------- Modal ---------- */
+  .modal{
+    position:fixed;inset:0;background:rgba(11,18,33,.78);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;padding:18px;z-index:50;
+  }
+  .modal.hidden{display:none}
+  .modal-card{
+    background:var(--surf);border:1px solid var(--bd);border-radius:20px;
+    padding:22px;width:100%;max-width:480px;
+  }
+  .modal-head{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  .modal-title{font-size:22px;font-weight:900;flex:1}
+  .modal-title small{color:var(--mut);font-size:12px;font-weight:500;display:block;margin-top:2px}
+  .close{
+    background:var(--surf2);border:1px solid var(--bd);color:var(--tx);
+    width:36px;height:36px;border-radius:10px;font-size:22px;font-weight:700;
+    cursor:pointer;line-height:1;
+  }
+  .close:hover{background:var(--bd)}
+  .m-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .m-stat{background:var(--surf2);border:1px solid var(--bd);border-radius:12px;padding:14px}
+  .m-stat .lbl{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px}
+  .m-stat .v{font-size:28px;font-weight:900;margin-top:4px}
+  .m-stat.span2{grid-column:span 2}
+  .health-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
   .hp{
-    border-radius:10px;border:1px solid var(--bd);padding:6px 4px;
+    border-radius:12px;border:2px solid var(--bd);padding:10px 4px;
     text-align:center;background:rgba(255,255,255,.02);
   }
-  .hp .lbl{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
-  .hp .st{font-size:10px;font-weight:800;letter-spacing:.4px;margin-top:2px}
-  .hp.ok     .st{color:var(--p)}
-  .hp.noisy  .st{color:var(--w)}
+  .hp .lbl{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  .hp .st{font-size:14px;font-weight:900;letter-spacing:.4px;margin-top:4px}
+  .hp.ok    {border-color:rgba(0,229,168,.4)}
+  .hp.ok    .st{color:var(--p)}
+  .hp.noisy {border-color:rgba(255,212,59,.4)}
+  .hp.noisy .st{color:var(--w)}
+  .hp.broken{border-color:rgba(255,77,109,.4)}
   .hp.broken .st{color:var(--d);animation:blink 1s steps(2) infinite}
-  .hp.dead   .st{color:var(--d);animation:blink 1s steps(2) infinite;font-weight:900}
+  .hp.dead  {border-color:rgba(255,77,109,.55);background:rgba(255,77,109,.08)}
+  .hp.dead  .st{color:var(--d);animation:blink 1s steps(2) infinite;font-weight:900}
   .hp.unknown .st{color:var(--mut)}
   @keyframes blink{50%{opacity:.4}}
+  /* ---------- Recent feed ---------- */
   .feed{
-    background:var(--surf);border:1px solid var(--bd);border-radius:18px;padding:14px;
-    margin-top:14px;
+    background:var(--surf);border:1px solid var(--bd);border-radius:18px;
+    padding:18px;margin-bottom:14px;
   }
-  .feed h3{font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px}
+  .feed h3{
+    font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.7px;
+    margin-bottom:10px;
+  }
   .row{
-    display:grid;grid-template-columns:54px 60px 50px 70px 110px 70px;gap:8px;
-    padding:7px 6px;border-bottom:1px dashed rgba(255,255,255,.06);
-    font-size:12px;align-items:center;
+    display:grid;grid-template-columns:60px 60px 1fr 80px;gap:10px;
+    padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,.06);
+    font-size:13px;align-items:center;
   }
   .row:last-child{border-bottom:none}
   .row .t{font-weight:800}
-  .row .s{font-weight:800;text-align:center;border-radius:8px;padding:2px 0}
-  .row .s.s1{background:rgba(255,77,109,.15);color:var(--s1)}
-  .row .s.s2{background:rgba(255,212,59,.15);color:var(--s2)}
-  .row .s.s3{background:rgba(76,201,240,.15);color:var(--s3)}
-  .row .s.s4{background:rgba(0,229,168,.15);color:var(--s4)}
-  .row .z{color:var(--mut);font-size:11px}
-  .row .xy{color:var(--mut);font-family:Menlo,monospace;font-size:11px}
-  .row .sp{color:var(--w);text-align:right;font-family:Menlo,monospace}
-  .actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
-  button{
+  .row .s{font-weight:800;text-align:center;border-radius:8px;padding:4px 0;font-size:12px}
+  .row .s.s1{background:rgba(255,77,109,.15);color:#ff4d6d}
+  .row .s.s2{background:rgba(255,212,59,.15);color:#ffd43b}
+  .row .s.s3{background:rgba(76,201,240,.15);color:#4cc9f0}
+  .row .s.s4{background:rgba(0,229,168,.15);color:#00e5a8}
+  .row .ago{color:var(--mut);font-family:Menlo,monospace;font-size:12px;text-align:right}
+  /* ---------- Action buttons ---------- */
+  .actions{
+    display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;
+  }
+  button,a.btn{
     background:var(--surf2);border:1px solid var(--bd);color:var(--tx);
-    padding:8px 14px;border-radius:10px;font-weight:700;cursor:pointer;
+    padding:11px 18px;border-radius:12px;font-weight:700;cursor:pointer;
+    font-size:14px;text-decoration:none;display:inline-block;
   }
-  button:hover{background:var(--bd)}
-  button.danger{color:var(--d);border-color:rgba(255,77,109,.4)}
-  button.primary{color:var(--p);border-color:rgba(0,229,168,.4)}
-  a.btn{display:inline-block;text-decoration:none;background:var(--surf2);
-       color:var(--tx);border:1px solid var(--bd);padding:7px 12px;
-       border-radius:10px;font-size:12px}
-  .calbar{
-    background:linear-gradient(135deg,rgba(255,212,59,.18),rgba(76,201,240,.10));
-    border:1px solid rgba(255,212,59,.4);border-radius:14px;padding:10px 14px;
-    margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
-  }
-  .calbar.idle{display:none}
-  .calbar .ttl2{font-weight:800;color:var(--w)}
-  .calbar .step{
-    background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:999px;
-    padding:3px 10px;font-size:12px;color:var(--mut);font-weight:700;
-  }
-  .calbar .step.active{background:var(--w);color:#0b1221;border-color:var(--w)}
-  .calbar .step.done{background:rgba(0,229,168,.2);color:var(--p);border-color:var(--p)}
-  .cal-status{
-    font-size:10px;letter-spacing:.5px;text-transform:uppercase;
-    padding:2px 7px;border-radius:999px;border:1px solid var(--bd);
-    background:rgba(255,255,255,.04);color:var(--mut);
-  }
-  .cal-status.on{color:var(--p);border-color:rgba(0,229,168,.4)}
-  .cal-status.off{color:var(--mut)}
-  .card-tools{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
-  .card-tools button{font-size:11px;padding:5px 9px}
+  button:hover,a.btn:hover{background:var(--bd)}
+  button.danger{color:var(--d);border-color:rgba(255,77,109,.45)}
+  button.primary{color:var(--p);border-color:rgba(0,229,168,.45)}
+  /* Modal tools row */
+  .modal-tools{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .modal-tools button{flex:1;min-width:120px}
 </style>
 </head>
 <body>
 <header>
   <div class="logo">KT</div>
-  <h1>KIK Target — Prototype V2 <small>4-sensor + triangulation + split-time</small></h1>
+  <h1>KIK Target <small>Prototype V3 — pengesanan tembakan</small></h1>
   <div class="pill"><span class="dot" id="dot"></span><span id="conn">Menyambung…</span></div>
 </header>
-<div class="calbar idle" id="calbar">
-  <div class="ttl2" id="caltitle">Mod Kalibrasi</div>
-  <div class="step" id="cstep1">S1</div>
-  <div class="step" id="cstep2">S2</div>
-  <div class="step" id="cstep3">S3</div>
-  <div class="step" id="cstep4">S4</div>
-  <div style="margin-left:auto"><button onclick="cancelCal()" class="danger">Batal</button></div>
+
+<!-- HERO: keseluruhan + grid 15 tile -->
+<div class="hero">
+  <div class="hero-stats">
+    <div class="hs">
+      <div class="lbl">Sasaran Online</div>
+      <div class="num"><span id="onCount">0</span><small>/<span id="totCount">15</span></small></div>
+    </div>
+    <div class="hs big">
+      <div class="lbl">Jumlah Hit (semua sasaran)</div>
+      <div class="num" id="totalHits">0</div>
+    </div>
+  </div>
+  <div class="tile-label">Sasaran <small>(tap untuk detail)</small></div>
+  <div class="tile-grid" id="tileGrid"></div>
+  <div class="tile-legend">
+    <span><span class="lg ok"></span>Online</span>
+    <span><span class="lg off"></span>Offline</span>
+    <span><span class="lg dead"></span>Sensor MATI</span>
+  </div>
 </div>
-<div class="stat-row">
-  <div class="stat"><div class="l">Sasaran Aktif</div><div class="v" id="sa">0/0</div></div>
-  <div class="stat"><div class="l">Jumlah Hit</div><div class="v" id="sh">0</div></div>
-  <div class="stat"><div class="l">Jumlah Skor</div><div class="v" id="ss">0</div></div>
-  <div class="stat"><div class="l">Avg Split</div><div class="v" id="avgs">— <small>ms</small></div></div>
-  <div class="stat"><div class="l">Best Split</div><div class="v" id="bests">— <small>ms</small></div></div>
+
+<!-- DETAIL MODAL -->
+<div class="modal hidden" id="modal" onclick="closeModalBg(event)">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <div class="modal-title">Sasaran <span id="mNum">—</span> <small id="mStatus">offline</small></div>
+      <button class="close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="m-stats">
+      <div class="m-stat span2"><div class="lbl">Jumlah Hit</div><div class="v" id="mHits">0</div></div>
+      <div class="m-stat"><div class="lbl">Last Trigger</div><div class="v" id="mTrig">—</div></div>
+      <div class="m-stat"><div class="lbl">Last Hit</div><div class="v" id="mAgo">—</div></div>
+    </div>
+    <div class="health-row">
+      <div class="hp unknown" id="mHp1"><div class="lbl">S1</div><div class="st">?</div></div>
+      <div class="hp unknown" id="mHp2"><div class="lbl">S2</div><div class="st">?</div></div>
+      <div class="hp unknown" id="mHp3"><div class="lbl">S3</div><div class="st">?</div></div>
+      <div class="hp unknown" id="mHp4"><div class="lbl">S4</div><div class="st">?</div></div>
+    </div>
+  </div>
 </div>
-<div class="grid" id="grid"></div>
+
+<!-- TEMBAKAN TERKINI + ACTIONS -->
 <div class="feed">
   <h3>Tembakan Terkini</h3>
   <div id="feed"></div>
-  <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+  <div class="actions">
     <button onclick="resetAll()" class="danger">Reset Sesi</button>
     <a class="btn" href="/log.csv" download>Muat Turun CSV (<span id="loglines">0</span>)</a>
     <button onclick="clearLog()">Padam Log</button>
   </div>
 </div>
+
 <script>
-// Must match NUM_TARGETS in central_v2.ino. Dashboard builds N cards on
-// load; if you change one, change the other.
+// ---------- config ----------
 const N = 15;
-const POLL_MS = 200;
-// 5-zone target rings (must match RING_R[] in central_v2.ino).
-const RING_R   = [0.20, 0.40, 0.60, 0.80, 1.30];
-const RING_PTS = [5, 4, 3, 2, 1];
+const POLL_MS = 250;
+const SENSOR_LABEL = {ok:'OK', noisy:'NOISY', broken:'ROSAK', dead:'MATI', unknown:'?'};
+
+// ---------- helpers ----------
 function fmtAgo(ms){
-  if(!ms || ms<1000) return 'baru';
+  if(!ms) return '—';
+  if(ms < 1500) return 'baru';
   const s = Math.round(ms/1000);
-  if(s<60) return s+'s';
+  if(s < 60) return s+'s';
   return Math.round(s/60)+'m';
 }
-function buildGrid(){
-  const g = document.getElementById('grid');
+function tileStatusClass(t){
+  if(!t || !t.online) return 'offline';
+  // any sensor flagged dead/broken -> mark tile as dead so it blinks
+  for(const sd of (t.sensors || [])){
+    if(sd.h === 'dead' || sd.h === 'broken') return 'dead';
+  }
+  return 'online';
+}
+
+// ---------- tile grid ----------
+function buildTiles(){
+  const g = document.getElementById('tileGrid');
   g.innerHTML = '';
   for(let i=1;i<=N;i++){
-    const c = document.createElement('div');
-    c.className = 'card off';
-    c.id = 'c'+i;
-    c.innerHTML = `
-      <div class="card-head">
-        <div class="ttl">Sasaran ${i} <small>4 piezo</small></div>
-        <div class="badge" id="bd${i}">offline</div>
-        <div class="cal-status off" id="cal${i}" title="Status kalibrasi">CAL: —</div>
-      </div>
-      <div class="target-vis"><canvas id="cv${i}" width="240" height="240"></canvas></div>
-      <div class="stats2">
-        <div class="k"><b>Hit</b><span id="h${i}">0</span></div>
-        <div class="k"><b>Skor</b><span id="sc${i}">0</span></div>
-        <div class="k"><b>Last Split</b><span id="ls${i}">—</span></div>
-        <div class="k"><b>Avg Split</b><span id="as${i}">—</span></div>
-        <div class="k"><b>Last Zon</b><span id="lz${i}">—</span></div>
-        <div class="k"><b>Last Trig</b><span id="lt${i}">—</span></div>
-      </div>
-      <div class="health-row">
-        <div class="hp unknown" id="hp${i}_1"><div class="lbl">S1</div><div class="st">?</div></div>
-        <div class="hp unknown" id="hp${i}_2"><div class="lbl">S2</div><div class="st">?</div></div>
-        <div class="hp unknown" id="hp${i}_3"><div class="lbl">S3</div><div class="st">?</div></div>
-        <div class="hp unknown" id="hp${i}_4"><div class="lbl">S4</div><div class="st">?</div></div>
-      </div>
-      <div class="card-tools">
-        <button class="primary" onclick="startCal(${i})">Kalibrasi</button>
-        <button onclick="clearCal(${i})">Padam Kalibrasi</button>
-      </div>
-    `;
-    g.appendChild(c);
+    const d = document.createElement('div');
+    d.className = 'tile offline';
+    d.id = 'tile'+i;
+    d.onclick = () => openModal(i);
+    d.innerHTML =
+      '<div class="tnum">T'+i+'</div>' +
+      '<div class="thits" id="th'+i+'">0</div>' +
+      '<div class="tlast" id="tl'+i+'">offline</div>';
+    g.appendChild(d);
   }
 }
-const dotsHistory = {};   // {targetId: [{x,y,score,ts}, ...]}
-function drawTarget(i, t){
-  const cv = document.getElementById('cv'+i);
-  if(!cv) return;
-  const ctx = cv.getContext('2d');
-  const W = cv.width, H = cv.height;
-  const cx = W/2, cy = H/2, R = Math.min(W,H)/2 * 0.95;
-  ctx.fillStyle = '#0d1628';
-  ctx.fillRect(0,0,W,H);
-  // Draw 5 concentric scoring rings, outermost first so inner rings paint
-  // on top. Alternate light/dark fills for legibility on small canvases.
-  const ringFill = ['rgba(255,77,109,0.35)','rgba(255,143,163,0.25)',
-                    'rgba(255,212,59,0.22)','rgba(76,201,240,0.18)',
-                    'rgba(0,229,168,0.14)'];
-  for(let r=RING_R.length-1;r>=0;r--){
-    const rr = RING_R[r] * R;
-    ctx.beginPath();
-    ctx.arc(cx, cy, rr, 0, Math.PI*2);
-    ctx.fillStyle = ringFill[r] || '#0d1628';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+
+// ---------- modal (per-target detail) ----------
+let currentModalTarget = 0;
+let lastSnapshot = null;
+function openModal(i){
+  currentModalTarget = i;
+  document.getElementById('modal').classList.remove('hidden');
+  refreshModal();
+}
+function closeModal(){
+  currentModalTarget = 0;
+  document.getElementById('modal').classList.add('hidden');
+}
+function closeModalBg(e){
+  if(e.target.id === 'modal') closeModal();
+}
+function refreshModal(){
+  if(!currentModalTarget || !lastSnapshot) return;
+  const i = currentModalTarget;
+  const t = (lastSnapshot.targets || []).find(x => x.id === i);
+  document.getElementById('mNum').textContent = i;
+  if(!t || !t.online){
+    document.getElementById('mStatus').textContent = 'offline';
+    document.getElementById('mHits').textContent = (t && t.hits) || 0;
+    document.getElementById('mTrig').textContent = '—';
+    document.getElementById('mAgo').textContent = '—';
+    for(let s=1;s<=4;s++){
+      const el = document.getElementById('mHp'+s);
+      el.classList.remove('ok','noisy','broken','dead','unknown');
+      el.classList.add('unknown');
+      el.querySelector('.st').textContent = '?';
+    }
+    return;
   }
-  // Centre dot (5-mark zone visual highlight)
-  ctx.beginPath();
-  ctx.arc(cx, cy, RING_R[0]*R*0.35, 0, Math.PI*2);
-  ctx.fillStyle = '#ffd43b';
-  ctx.fill();
-  // Zone labels (5,4,3,2,1) along the +X axis between consecutive rings.
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = 'bold 10px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  let prev = 0;
-  for(let r=0;r<RING_R.length;r++){
-    const mid = (prev + RING_R[r]) / 2;
-    ctx.fillText(''+RING_PTS[r], cx + mid*R, cy);
-    prev = RING_R[r];
-  }
-  ctx.textAlign = 'start';
-  ctx.textBaseline = 'alphabetic';
-  // Sensor markers (S1..S4 at corners)
-  ctx.fillStyle = '#8896b8';
-  ctx.font = '10px monospace';
-  ctx.fillText('S1', cx - R*0.95, cy - R*0.85);
-  ctx.fillText('S2', cx + R*0.85, cy - R*0.85);
-  ctx.fillText('S3', cx - R*0.95, cy + R*0.95);
-  ctx.fillText('S4', cx + R*0.85, cy + R*0.95);
-  // Hit dots from history (older = faded)
-  const hist = dotsHistory[i] || [];
-  for(let k=0;k<hist.length;k++){
-    const d = hist[k];
-    const age = (hist.length - 1 - k);
-    const alpha = Math.max(0.18, 1 - age*0.06);
-    const px = cx + d.x * R;
-    const py = cy - d.y * R;     // flip Y so +Y is up on screen
-    ctx.beginPath();
-    ctx.arc(px, py, 5, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(255,77,109,'+alpha+')';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+  document.getElementById('mStatus').textContent = 'online';
+  document.getElementById('mHits').textContent = t.hits || 0;
+  document.getElementById('mTrig').textContent = t.lastTrigger ? ('S'+t.lastTrigger) : '—';
+  document.getElementById('mAgo').textContent = fmtAgo(t.ago || 0);
+  for(let s=1;s<=4;s++){
+    const sd = (t.sensors || [])[s-1] || {};
+    const h = sd.h || 'unknown';
+    const el = document.getElementById('mHp'+s);
+    el.classList.remove('ok','noisy','broken','dead','unknown');
+    el.classList.add(h);
+    el.querySelector('.st').textContent = SENSOR_LABEL[h] || '?';
+    el.title = 'baseline='+(sd.bl||0)+'  peak='+(sd.pk||0);
   }
 }
-function pushDot(i, x, y, score){
-  if(!dotsHistory[i]) dotsHistory[i] = [];
-  dotsHistory[i].push({x:x, y:y, score:score, ts:Date.now()});
-  if(dotsHistory[i].length > 30) dotsHistory[i].shift();
-}
-function clearDots(i){ dotsHistory[i] = []; }
-const lastSeq = {};
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape') closeModal();
+});
+
+// ---------- poll loop ----------
 async function tick(){
   try{
     const r = await fetch('/status', {cache:'no-store'});
     const d = await r.json();
+    lastSnapshot = d;
     document.getElementById('dot').classList.add('on');
     document.getElementById('conn').textContent = 'Tersambung';
-    let active = 0, hits = 0, score = 0, splitSum = 0, splitN = 0, bestSplit = null;
+    let online = 0, totalHits = 0;
     for(let i=1;i<=N;i++){
-      const t = (d.targets || []).find(x=>x.id===i);
-      const card = document.getElementById('c'+i);
-      const bd = document.getElementById('bd'+i);
-      if(!t || !t.online){
-        card.classList.add('off');
-        bd.textContent = 'offline';
-        bd.classList.remove('online');
-        continue;
+      const t = (d.targets || []).find(x => x.id === i);
+      const tile = document.getElementById('tile'+i);
+      const th   = document.getElementById('th'+i);
+      const tl   = document.getElementById('tl'+i);
+      tile.classList.remove('online','offline','dead');
+      tile.classList.add(tileStatusClass(t));
+      if(t && t.online){
+        online++;
+        totalHits += t.hits || 0;
+        th.textContent = t.hits || 0;
+        tl.textContent = t.lastTrigger ? ('S'+t.lastTrigger+' • '+fmtAgo(t.ago||0)) : 'idle';
+      } else {
+        th.textContent = (t && t.hits) || 0;
+        tl.textContent = 'offline';
       }
-      card.classList.remove('off');
-      bd.textContent = 'online';
-      bd.classList.add('online');
-      active++;
-      hits  += t.hits||0;
-      score += t.scoreSum||0;
-      if(t.splitN > 0){
-        splitSum += t.splitSum||0;
-        splitN   += t.splitN;
-      }
-      if(t.minSplit && (bestSplit===null || t.minSplit < bestSplit)) bestSplit = t.minSplit;
-      // Per-target stats
-      document.getElementById('h'+i).textContent  = t.hits||0;
-      document.getElementById('sc'+i).textContent = t.scoreSum||0;
-      document.getElementById('ls'+i).textContent = (t.lastSplit||t.lastSplit===0)
-          ? (t.lastSplit + ' ms') : '—';
-      document.getElementById('as'+i).textContent = (t.splitN > 0)
-          ? Math.round(t.splitSum / t.splitN) + ' ms' : '—';
-      document.getElementById('lz'+i).textContent = t.lastZoneLabel || '—';
-      document.getElementById('lt'+i).textContent = t.lastTrigger ? ('S'+t.lastTrigger) : '—';
-      // Sensor health badges
-      const healthLabel = {ok:'OK', noisy:'NOISY', broken:'ROSAK',
-                           dead:'MATI', unknown:'?'};
-      for(let s=1;s<=4;s++){
-        const sd = (t.sensors || [])[s-1] || {};
-        const h = sd.h || 'unknown';
-        const el = document.getElementById('hp'+i+'_'+s);
-        if(!el) continue;
-        el.classList.remove('ok','noisy','broken','dead','unknown');
-        el.classList.add(h);
-        el.querySelector('.st').textContent = healthLabel[h];
-        el.title = 'baseline='+(sd.bl||0)+'  peak='+(sd.pk||0);
-      }
-      // New hit since last poll? Push new dot.
-      const last = lastSeq[i] || 0;
-      if(t.lastHitSeq && t.lastHitSeq > last){
-        pushDot(i, t.lastX || 0, t.lastY || 0, t.lastScore || 0);
-        lastSeq[i] = t.lastHitSeq;
-      }
-      drawTarget(i, t);
     }
-    document.getElementById('sh').textContent = hits;
-    document.getElementById('ss').textContent = score;
-    document.getElementById('sa').textContent = active+'/'+N;
-    document.getElementById('avgs').innerHTML = (splitN > 0)
-        ? Math.round(splitSum/splitN) + ' <small>ms</small>'
-        : '— <small>ms</small>';
-    document.getElementById('bests').innerHTML = bestSplit !== null
-        ? bestSplit + ' <small>ms</small>'
-        : '— <small>ms</small>';
+    document.getElementById('onCount').textContent = online;
+    document.getElementById('totCount').textContent = N;
+    document.getElementById('totalHits').textContent = totalHits;
     renderFeed(d.recent || []);
-    updateCalBar(d);
-    updateCalBadges(d.targets || []);
     const ll = document.getElementById('loglines');
     if(ll) ll.textContent = (d.log && typeof d.log.lines === 'number') ? d.log.lines : '0';
-  }catch(e){
+    refreshModal();
+  } catch(e){
     document.getElementById('dot').classList.remove('on');
     document.getElementById('conn').textContent = 'Terputus';
   }
 }
+
+// ---------- recent feed (no zone / score) ----------
 function renderFeed(recent){
   const f = document.getElementById('feed');
   f.innerHTML = '';
   if(!recent || recent.length === 0){
-    f.innerHTML = '<div style="color:var(--mut);font-size:12px;padding:8px">Belum ada tembakan…</div>';
+    f.innerHTML = '<div style="color:var(--mut);font-size:13px;padding:8px">Belum ada tembakan…</div>';
     return;
   }
-  for(let k=recent.length-1;k>=0;k--){
+  const now = Date.now();
+  // newest first
+  for(let k = recent.length - 1; k >= 0; k--){
     const r = recent[k];
     const row = document.createElement('div');
     row.className = 'row';
-    const x = (r.x10/1000).toFixed(2);
-    const y = (r.y10/1000).toFixed(2);
-    row.innerHTML = `
-      <div class="t">T${r.t}</div>
-      <div class="s s${r.trig}">S${r.trig}</div>
-      <div class="z">Z${r.zone}=${r.score}</div>
-      <div class="z">${zoneLabel(r.zone)}</div>
-      <div class="xy">x=${x} y=${y}</div>
-      <div class="sp">${r.split>0 ? r.split+'ms' : '—'}</div>
-    `;
+    const ageMs = r.ts ? Math.max(0, now - (now - (recent[recent.length-1].ts - r.ts))) : 0;
+    // Simpler: use recent ordering as ago label since ts is target-board millis
+    // not synced to dashboard wallclock.
+    const idx = recent.length - 1 - k;
+    const agoLbl = idx === 0 ? 'baru' : (idx + ' tembakan lepas');
+    row.innerHTML =
+      '<div class="t">T'+r.t+'</div>' +
+      '<div class="s s'+r.trig+'">S'+r.trig+'</div>' +
+      '<div></div>' +
+      '<div class="ago">'+agoLbl+'</div>';
     f.appendChild(row);
   }
 }
-function zoneLabel(z){
-  // 0=5pt centre, 1=4pt, 2=3pt, 3=2pt, 4=1pt, 5=miss
-  if(z >= 0 && z <= 4) return ''+(5-z);
-  return 'M';
-}
+
+// ---------- actions ----------
 async function resetAll(){
-  if(!confirm('Reset semua kaunter & dot history?')) return;
+  if(!confirm('Reset semua kaunter hit dan tembakan terkini?')) return;
   await fetch('/reset', {method:'POST'});
-  for(let i=1;i<=N;i++){ clearDots(i); lastSeq[i] = 0; }
-}
-async function startCal(i){
-  if(!confirm('Mula mod kalibrasi Sasaran '+i+'?\n'
-    +'Anda akan diminta ketuk S1, S2, S3, S4 satu demi satu.\n'
-    +'Hit semasa kalibrasi tidak dikira ke skor.')) return;
-  const r = await fetch('/cal/start?target='+i, {method:'POST'});
-  if(!r.ok){ alert('Gagal mula kalibrasi: '+r.status); return; }
-}
-async function cancelCal(){
-  await fetch('/cal/cancel', {method:'POST'});
-}
-async function clearCal(i){
-  if(!confirm('Padam kalibrasi Sasaran '+i+'?')) return;
-  await fetch('/cal/clear?target='+i, {method:'POST'});
 }
 async function clearLog(){
   if(!confirm('Padam log sesi (CSV)?')) return;
   await fetch('/log/clear', {method:'POST'});
 }
-function updateCalBar(d){
-  const bar = document.getElementById('calbar');
-  const cal = d.cal || {active:false,target:0,step:0,capture:[0,0,0,0]};
-  if(!cal.active){
-    bar.classList.add('idle');
-    return;
-  }
-  bar.classList.remove('idle');
-  document.getElementById('caltitle').textContent =
-    'Mod Kalibrasi T'+cal.target+' — Ketuk S'+(cal.step+1)+' sekarang';
-  for(let s=1;s<=4;s++){
-    const el = document.getElementById('cstep'+s);
-    el.classList.remove('active','done');
-    if(s-1 < cal.step) el.classList.add('done');
-    else if(s-1 === cal.step) el.classList.add('active');
-  }
-}
-function updateCalBadges(targets){
-  for(const t of (targets || [])){
-    const el = document.getElementById('cal'+t.id);
-    if(!el) continue;
-    el.classList.remove('on','off');
-    if(t.calValid){
-      el.classList.add('on');
-      el.textContent = 'CAL: ON';
-      el.title = 'Ref: '+(t.calRef||[]).join(', ');
-    }else{
-      el.classList.add('off');
-      el.textContent = 'CAL: OFF';
-      el.title = 'Belum dikalibrasi';
-    }
-  }
-}
-buildGrid();
+
+// ---------- boot ----------
+buildTiles();
 setInterval(tick, POLL_MS);
 tick();
 </script>
