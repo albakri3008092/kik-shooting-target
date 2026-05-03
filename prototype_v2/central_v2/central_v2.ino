@@ -198,7 +198,14 @@ static TargetState T[NUM_TARGETS + 1];   // index 1..NUM_TARGETS
 // ZERO_BASELINE_THRESH while updating the per-sensor streak.
 static const uint8_t  DEAD_STREAK_N           = 3;   // silent hits in a row
 static const uint16_t DEAD_MIN_HITS           = 3;   // need >= this many hits to trust streak
-static const uint16_t ZERO_BASELINE_THRESH    = 10;  // ADC counts treated as "open line"
+// 50 counts \u2248 1.2% of full-scale on a 12-bit ADC. A connected piezo on
+// GPIO 32/33 idles around BASELINE_SEED (=150) and a working piezo on
+// floating GPIO 34/35 still picks up enough ambient vibration to push
+// peak[] well above this floor inside a 5-second window. An *open*
+// wire dangling off the pin reads mostly 0 (internal pull-down) plus
+// occasional EMI / ADC-channel ghost noise of a few tens of counts \u2014
+// a threshold of 50 catches that without false-flagging real piezos.
+static const uint16_t ZERO_BASELINE_THRESH    = 50;  // ADC counts treated as "open line"
 static const uint8_t  ZERO_BASELINE_STREAK_N  = 1;   // 1 health report x 5 s = 5 s
 
 // ---------- Recent hits ring buffer ----------
