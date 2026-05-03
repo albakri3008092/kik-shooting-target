@@ -282,6 +282,18 @@ static void runSelfTest() {
 }
 
 static void sendHealth() {
+  // Snapshot the accumulated per-sensor peak BEFORE running the active
+  // self-test. runSelfTest() zeroes peakWindow[i] on every probed pin
+  // (S1/S2) so its 3.3 V drive pulse can't be picked up as a fake hit
+  // on the next scan; if we read peakWindow[] AFTER the probe, those
+  // pins would report peak = 0 every Health beat regardless of how
+  // much real activity they captured. The central's differential
+  // silent-in-active-window check would then see S1/S2 as "always
+  // silent", and (with SILENT_IN_ACTIVE_STREAK_N = 1) flip both to
+  // MATI on the very first shot.
+  uint16_t capturedPeak[4];
+  for (int i = 0; i < 4; i++) capturedPeak[i] = peakWindow[i];
+
   // Refresh per-sensor connectivity probe right before populating the
   // packet so the central's view is always at most one Health interval
   // stale.
@@ -292,7 +304,7 @@ static void sendHealth() {
   h.targetID = TARGET_ID;
   for (int i = 0; i < 4; i++) {
     h.baseline[i]    = baseline[i];
-    h.peak[i]        = peakWindow[i];
+    h.peak[i]        = capturedPeak[i];
     h.connected[i]   = gConnected[i];
     h.selfTestRaw[i] = gSelfTestRaw[i];
     peakWindow[i]    = 0;
