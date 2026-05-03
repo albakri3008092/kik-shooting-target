@@ -11,6 +11,8 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <soc/soc.h>
+#include <soc/rtc_cntl_reg.h>
 
 // ---------- EDIT THESE TWO LINES PER BOARD ----------
 #define TARGET_ID    1                                     // 1..15
@@ -83,6 +85,13 @@ static void onSent(const uint8_t* /*mac*/, esp_now_send_status_t status) {
 }
 
 void setup() {
+  // Disable the ESP32 brownout detector. Cheap USB cables and lower-
+  // current power banks can cause the 5V rail to dip below the BOD
+  // threshold the moment WiFi transmits, causing an SW_RESET loop with
+  // `E BOD: Brownout detector was triggered`. The proper fix is a
+  // beefier supply + bulk cap, but disabling BOD lets the demo run.
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   Serial.begin(115200);
   pinMode(2, OUTPUT);                    // status LED
   analogReadResolution(12);

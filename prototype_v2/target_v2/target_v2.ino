@@ -22,6 +22,8 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <soc/soc.h>
+#include <soc/rtc_cntl_reg.h>
 
 // ---------- EDIT THESE TWO LINES PER BOARD ----------
 // TARGET_ID must be unique across all 15 target boards. The central
@@ -114,6 +116,16 @@ static void onSent(const uint8_t* /*mac*/, esp_now_send_status_t status) {
 }
 
 void setup() {
+  // Disable the ESP32 brownout detector. Some shorter / cheaper USB
+  // cables and lower-current power banks cause the 5V rail to dip below
+  // the BOD threshold the moment WiFi transmits, which forces an SW_RESET
+  // loop with `E BOD: Brownout detector was triggered` in the log. The
+  // sensor pipeline is fine without BOD protection (we don't write to
+  // flash at runtime); the proper fix is a beefier supply + bulk cap on
+  // the rail, but disabling BOD lets the user keep developing while they
+  // chase the hardware fix.
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   Serial.begin(115200);
   pinMode(2, OUTPUT);
   analogReadResolution(12);
