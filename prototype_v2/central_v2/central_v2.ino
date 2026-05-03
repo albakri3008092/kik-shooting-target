@@ -193,6 +193,14 @@ struct TargetState {
 };
 static TargetState T[NUM_TARGETS + 1];   // index 1..NUM_TARGETS
 
+// Sensor-health classification thresholds. Declared up here (rather than
+// next to sensorHealthLabel below) so onEspNow can reference
+// ZERO_BASELINE_THRESH while updating the per-sensor streak.
+static const uint8_t  DEAD_STREAK_N           = 3;   // silent hits in a row
+static const uint16_t DEAD_MIN_HITS           = 3;   // need >= this many hits to trust streak
+static const uint16_t ZERO_BASELINE_THRESH    = 10;  // ADC counts treated as "open line"
+static const uint8_t  ZERO_BASELINE_STREAK_N  = 5;   // ~5 health reports x 2 s = ~10 s
+
 // ---------- Recent hits ring buffer ----------
 struct RecentHit {
   uint32_t ts;
@@ -1043,10 +1051,6 @@ static void handleRoot() {
 // and let us flag a wire-disconnect (which a baseline check alone
 // cannot detect, because a broken wire and an idle sensor both sit at
 // ~0 V due to the pull-down).
-static const uint8_t  DEAD_STREAK_N           = 3;   // silent hits in a row
-static const uint16_t DEAD_MIN_HITS           = 3;   // need >= this many hits to trust streak
-static const uint16_t ZERO_BASELINE_THRESH    = 10;  // ADC counts treated as "open line"
-static const uint8_t  ZERO_BASELINE_STREAK_N  = 5;   // ~5 health reports x 2 s = ~10 s
 static const char* sensorHealthLabel(uint16_t baselineV, uint32_t healthAge,
                                      bool haveHealth,
                                      uint8_t deadStreak,
