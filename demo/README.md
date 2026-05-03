@@ -43,9 +43,33 @@ leaderboard, etc.) see `firmware/` + `dashboard/` at the repo root._
 
 **3. Uji:**
 - Hidupkan pusat dahulu, kemudian 3 sasaran.
-- Phone → Wi-Fi → **Target_System** (password **12345678**).
+- Phone / tablet → Wi-Fi → **Target_System** (password **12345678**).
 - Pelayar → **<http://192.168.4.1/>**.
 - Ketuk sasaran — kiraan, skor dan titik akan muncul serta-merta.
+
+### Apa yang dipapar pada tablet
+
+Setiap sasaran ada kad sendiri dengan:
+
+1. **🎯 Sasaran X** + skor kumulatif (pill merah di kanan).
+2. **Bullseye** — setiap peluru letakkan titik warna di kuadran yang kena.
+3. **SENSOR TERAKHIR** — badge besar (S1 / S2 / S3 / S4) tunjuk piezo
+   mana paling kuat mengesan tembakan terakhir, dengan warna zon yang
+   sepadan + masa berlalu.
+4. **S1..S4 / Zon 10..4** — kiraan per sensor (kuadran yang pulse
+   semasa kena).
+
+Di bawah tiga kad itu ada **🔴 Tembakan Terkini** — log 16 tembakan
+terakhir merentas semua 3 sasaran, dalam bentuk:
+
+```
+T2   S3   Zon 6   +6   2s
+T1   S1   Zon 10  +10  baru
+```
+
+Ini yang paling penting semasa bentang: juri dapat lihat *sensor mana*
+(S1–S4) pada *sasaran mana* (T1–T3) yang mengesan setiap peluru, secara
+langsung.
 
 ### Pendawaian piezo (setiap sasaran)
 
@@ -107,9 +131,32 @@ Jika tiada buzzer, biar sahaja — tidak akan rosak.
 
 **3. Test:**
 - Power on the central first, then the 3 targets.
-- Phone → Wi-Fi → **Target_System** (pwd **12345678**).
+- Phone / tablet → Wi-Fi → **Target_System** (pwd **12345678**).
 - Browser → **<http://192.168.4.1/>**.
 - Tap a target — the hit count, score, and dot appear instantly.
+
+### What the tablet shows
+
+Each target has its own card with:
+
+1. **🎯 Target X** + cumulative score (red pill, right).
+2. **Bullseye** — every shot drops a colour dot in the triggered quadrant.
+3. **SENSOR TERAKHIR / LAST SENSOR** — big badge (S1 / S2 / S3 / S4)
+   showing which piezo detected the latest shot most strongly, coloured
+   to match the zone, with "time ago".
+4. **S1..S4 / Zone 10..4** — per-sensor counters (pulse on hit).
+
+Below the three cards: **🔴 Tembakan Terkini (Recent shots)** — a log
+of the last 16 hits across all targets:
+
+```
+T2   S3   Zone 6   +6   2s
+T1   S1   Zone 10  +10  just now
+```
+
+That's the key judge-facing view during a demo: audience can see
+*which sensor* (S1–S4) on *which target* (T1–T3) caught every bullet,
+live.
 
 ### Piezo wiring (per target)
 
