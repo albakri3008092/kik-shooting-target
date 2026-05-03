@@ -129,6 +129,14 @@ struct HealthPacket {
   uint8_t  targetID;
   uint16_t baseline[4];
   uint16_t peak[4];
+  // Active capacitance self-test result populated by target_v2.ino:
+  //   connected[i] = 1 -> wire/piezo present (or pin not testable)
+  //   connected[i] = 0 -> open / cut wire detected
+  // selfTestRaw[i] is the raw ADC reading at the end of the decay
+  // window (0 for skipped pins; useful if SELFTEST_THRESH_ADC ever
+  // needs retuning against a different piezo / pull-down value).
+  uint8_t  connected[4];
+  uint16_t selfTestRaw[4];
 };
 #pragma pack(pop)
 
@@ -192,6 +200,16 @@ struct TargetState {
   // sensor) leaves the streak untouched, so an undisturbed target
   // doesn't false-flag every sensor as MATI.
   uint8_t  silentInActiveStreak[4] = {0, 0, 0, 0};
+
+  // Active self-test mirror of HealthPacket.connected[] /
+  // selfTestRaw[] for dashboard rendering. notConnectedStreak[i]
+  // counts consecutive Health packets with connected[i] == 0 so a
+  // single dropped/jittered probe doesn't flap MATI; once it crosses
+  // NOT_CONNECTED_STREAK_N the sensor is surfaced as MATI on the
+  // dashboard regardless of whether the user is actually shooting.
+  uint8_t  connected[4]            = {1, 1, 1, 1};
+  uint16_t selfTestRaw[4]          = {0, 0, 0, 0};
+  uint8_t  notConnectedStreak[4]   = {0, 0, 0, 0};
 };
 static TargetState T[NUM_TARGETS + 1];   // index 1..NUM_TARGETS
 
@@ -221,6 +239,16 @@ static const uint16_t DEAD_MIN_HITS             = 3;  // need >= this many hits 
 // so an undisturbed target stays "ok".
 static const uint16_t SILENT_ACTIVITY_THRESH    = 100;
 static const uint8_t  SILENT_IN_ACTIVE_STREAK_N = 1;
+// Active self-test path. The target's per-sensor capacitance probe
+// is far less ambiguous than the differential silent check above,
+// but a single Health packet can still be corrupted in flight or
+// race a borderline ADC reading. Two consecutive disconnected
+// reports (~10 s on a 5 s Health interval) is enough to swallow that
+// jitter while still feeling instantaneous to the user during the
+// demo. Only GPIO 32/33 (S1/S2) actually run the probe today; the
+// target hard-codes connected[2] / connected[3] = 1 for GPIO 34/35
+// so this streak never advances on those channels.
+static const uint8_t  NOT_CONNECTED_STREAK_N    = 2;
 
 // ---------- Recent hits ring buffer ----------
 struct RecentHit {
@@ -940,20 +968,49 @@ static void onEspNow(const uint8_t* mac, const uint8_t* data, int len) {
       // else: whole-target idle window; leave streak unchanged so a
       // long undisturbed period doesn't either set or clear MATI.
     }
+    // Active self-test path: target probes each pin's body capacitance
+    // every Health interval and reports the per-pin verdict in
+    // h.connected[]. This is independent of whether the user is
+    // shooting and works even if every sensor on the target has been
+    // idle for hours, so it gives the dashboard the "every 5 s each
+    // sensor says I'm OK" behaviour. We still require N consecutive
+    // not-connected reports to flip MATI so a single dropped packet
+    // doesn't flap the badge red. Conversely, a single passing probe
+    // immediately clears the streak so reseating a wire shows up as
+    // OK on the next Health beat.
+    for (int i = 0; i < 4; i++) {
+      t.connected[i]   = h.connected[i];
+      t.selfTestRaw[i] = h.selfTestRaw[i];
+      if (h.connected[i] == 0) {
+        if (t.notConnectedStreak[i] < 0xFF) t.notConnectedStreak[i]++;
+      } else {
+        t.notConnectedStreak[i] = 0;
+      }
+    }
     // Echo received Health to Serial so a user with a laptop hooked to
     // the central can read the real ADC numbers without the dashboard
     // (mobile Chrome silently drops `title=` tooltips, which was our
     // only previous way to expose these). Format mirrors the target
     // Serial print so identical lines on both ends prove what got
-    // transmitted vs received.
-    Serial.printf("Health rx T=%u bl=[%u,%u,%u,%u] pk=[%u,%u,%u,%u] streak=[%u,%u,%u,%u]\n",
+    // transmitted vs received. `cn` = connected[] from active self-test,
+    // `stRaw` = ADC reading at end of decay window (handy for
+    // retuning SELFTEST_THRESH_ADC if a different piezo is fitted).
+    Serial.printf("Health rx T=%u bl=[%u,%u,%u,%u] pk=[%u,%u,%u,%u] "
+                  "streak=[%u,%u,%u,%u] cn=[%u,%u,%u,%u] "
+                  "ncStreak=[%u,%u,%u,%u] stRaw=[%u,%u,%u,%u]\n",
                   (unsigned)tid,
                   (unsigned)h.baseline[0], (unsigned)h.baseline[1],
                   (unsigned)h.baseline[2], (unsigned)h.baseline[3],
                   (unsigned)h.peak[0], (unsigned)h.peak[1],
                   (unsigned)h.peak[2], (unsigned)h.peak[3],
                   (unsigned)t.silentInActiveStreak[0], (unsigned)t.silentInActiveStreak[1],
-                  (unsigned)t.silentInActiveStreak[2], (unsigned)t.silentInActiveStreak[3]);
+                  (unsigned)t.silentInActiveStreak[2], (unsigned)t.silentInActiveStreak[3],
+                  (unsigned)h.connected[0], (unsigned)h.connected[1],
+                  (unsigned)h.connected[2], (unsigned)h.connected[3],
+                  (unsigned)t.notConnectedStreak[0], (unsigned)t.notConnectedStreak[1],
+                  (unsigned)t.notConnectedStreak[2], (unsigned)t.notConnectedStreak[3],
+                  (unsigned)h.selfTestRaw[0], (unsigned)h.selfTestRaw[1],
+                  (unsigned)h.selfTestRaw[2], (unsigned)h.selfTestRaw[3]);
     return;
   }
   if (ptype == 2) {
@@ -1106,9 +1163,19 @@ static const char* sensorHealthLabel(uint16_t baselineV, uint32_t healthAge,
                                      bool haveHealth,
                                      uint8_t deadStreak,
                                      uint16_t hitsForHealth,
-                                     uint8_t silentInActiveStreak) {
+                                     uint8_t silentInActiveStreak,
+                                     uint8_t notConnectedStreak) {
   if (!haveHealth)         return "unknown";
   if (baselineV >= 3000)   return "broken";
+  if (notConnectedStreak >= NOT_CONNECTED_STREAK_N) {
+    // Active capacitance probe in target_v2.ino has reported "open"
+    // for N consecutive Health beats. This is the most decisive of
+    // the three dead-sensor signals because it doesn't need the user
+    // to be shooting — the target ran a literal continuity test on
+    // this pin, every five seconds, and it kept failing. (Currently
+    // only GPIO 32/33 — S1/S2 — actually run the probe.)
+    return "dead";
+  }
   if (hitsForHealth >= DEAD_MIN_HITS && deadStreak >= DEAD_STREAK_N) {
     // Sensor failed to respond to several consecutive shots while other
     // sensors on the same target ARE registering activity — almost
@@ -1184,7 +1251,8 @@ static void handleStatus() {
       j += ",\"h\":\""; j += sensorHealthLabel(bl, healthAge, haveHealth,
                                                 t.deadStreak[s],
                                                 t.hitsForHealth,
-                                                t.silentInActiveStreak[s]);
+                                                t.silentInActiveStreak[s],
+                                                t.notConnectedStreak[s]);
       j += "\"}";
     }
     j += "]}";

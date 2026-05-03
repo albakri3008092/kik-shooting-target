@@ -72,12 +72,36 @@ struct HeartbeatPacket {
   uint16_t hitSeq;          // last sequence (helps central detect drops)
 };
 
-// HealthPacket: 3 = per-sensor health (baseline + recent peak).
+// HealthPacket: 3 = per-sensor health (baseline + recent peak +
+// per-sensor active self-test result).
+//
+// `connected[i]` is the result of an in-firmware capacitance probe run
+// just before this packet was sent: target briefly drives the pin
+// HIGH (charging the piezo's body capacitance through ESP32's output
+// stage), switches the pin to high-Z INPUT, waits ~200 us, then reads
+// the ADC. With the production 1 MΩ pull-down + a connected piezo
+// (~1 nF), tau = R*C ≈ 1 ms so the pin still sits well above 1.5 V at
+// t = 200 us. With an open / cut wire the only stored charge is the
+// pin's parasitic ~10 pF, tau ≈ 10 us, so by t = 200 us the ADC reads
+// 0. That difference is what lets the central distinguish a quiet,
+// connected piezo from a cut wire WITHOUT needing the user to fire a
+// shot.
+//
+// Self-test only works on pins that can be driven as OUTPUT, i.e.
+// GPIO 32/33 on this board (S1 + S2). GPIO 34/35 (S3, S4) are
+// input-only on the ESP32-D0WD silicon, so we report connected[2] /
+// connected[3] = 1 unconditionally; the central's existing
+// differential silent-in-active-window check still flags them on a
+// real shot.  selfTestRaw[i] is the raw ADC reading captured during
+// the test (0 for skipped pins) so the central / dashboard can show
+// the actual numbers if a threshold ever needs tuning.
 struct HealthPacket {
   uint8_t  type;            // 3 = health
   uint8_t  targetID;
   uint16_t baseline[4];     // current EMA baseline per sensor (ADC counts)
   uint16_t peak[4];         // max sample observed since last health send
+  uint8_t  connected[4];    // 1 = self-test passed (or pin not testable), 0 = wire open
+  uint16_t selfTestRaw[4];  // raw ADC reading at end of decay window (0 if skipped)
 };
 #pragma pack(pop)
 
@@ -97,6 +121,29 @@ static uint16_t  prevSample[4]   = {0, 0, 0, 0};
 static uint16_t  peakWindow[4]   = {0, 0, 0, 0}; // for HealthPacket
 static uint32_t  lastHeartbeat   = 0;
 static uint32_t  lastHealth      = 0;
+
+// Cached self-test result per sensor; refreshed inside sendHealth().
+// 1 = wire/piezo present, 0 = open wire detected. Initialised to 1
+// so the very first Health packet (sent before any test runs) doesn't
+// flap the central into an instant MATI on boot.
+static uint8_t   gConnected[4]    = {1, 1, 1, 1};
+static uint16_t  gSelfTestRaw[4]  = {0, 0, 0, 0};
+
+// Active self-test parameters. Tuned for the production wiring
+// (1 MΩ external pull-down + standard 27 mm piezo disk ≈ 1 nF body
+// capacitance):
+//   * 100 us drive-HIGH gives the ESP32 output stage time to charge
+//     the piezo to the rail through its ~50 Ω source impedance
+//     (R*C = 50 ns, so 100 us = 2000 tau, completely settled).
+//   * 200 us settle after going high-Z gives the connected piezo
+//     (1 nF, 1 MΩ) only 0.2 tau of decay, so it still reads ~2.7 V
+//     while a cut wire (parasitic ~10 pF, 1 MΩ, tau ≈ 10 us) has
+//     fully decayed to 0 V. ADC threshold of 400 (≈ 0.32 V) is a
+//     comfortable margin between the two cases and tolerates piezos
+//     down to ~0.1 nF before false-flagging "open".
+static const uint16_t SELFTEST_DRIVE_US   = 100;
+static const uint16_t SELFTEST_SETTLE_US  = 200;
+static const uint16_t SELFTEST_THRESH_ADC = 400;
 
 // ---------- ESP-NOW ----------
 // The send-callback signature changed twice in the ESP32 Arduino core:
@@ -185,20 +232,79 @@ static void sendHeartbeat() {
   esp_now_send(RECEIVER_MAC, (const uint8_t*)&h, sizeof(h));
 }
 
+// Active capacitance probe on a single piezo pin. Drives the pin HIGH
+// briefly to charge the piezo's body capacitance, switches to high-Z
+// INPUT, lets the external 1 MΩ pull-down discharge it for
+// SELFTEST_SETTLE_US, then samples the ADC. Returns the raw ADC
+// reading; the caller maps that against SELFTEST_THRESH_ADC to decide
+// if the pin still has a piezo on it. Restores the pin to its
+// configured input mode (with internal pull-down on GPIO 32/33)
+// before returning so the regular hit-detection scan resumes
+// transparently. Caller is responsible for resetting baseline /
+// prevSample / peakWindow on this pin afterwards — the ~3.3 V drive
+// pulse will otherwise be picked up as a fake rising-edge hit on the
+// first IDLE iteration.
+static uint16_t selfTestPiezoPin(uint8_t pin) {
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, HIGH);
+  delayMicroseconds(SELFTEST_DRIVE_US);
+  pinMode(pin, INPUT);                    // high-Z; only external 1 MΩ pulldown discharges
+  delayMicroseconds(SELFTEST_SETTLE_US);
+  uint16_t adc = analogRead(pin);
+  pinMode(pin, INPUT_PULLDOWN);           // restore normal mode (only GPIO 32/33 reach here)
+  return adc;
+}
+
+// Run the self-test on every pin that supports OUTPUT drive. GPIO
+// 34/35 (S3/S4) are input-only and therefore can't be probed this
+// way — we leave their `connected` flag at 1 ("unknown / assume OK")
+// so the central's existing differential silent-in-active check still
+// owns those two channels.
+static void runSelfTest() {
+  if (hitState != HitState::IDLE) return;  // never disturb a live hit window
+  for (int i = 0; i < 4; i++) {
+    if (!PIEZO_HASPULL[i]) {
+      gConnected[i]   = 1;
+      gSelfTestRaw[i] = 0;
+      continue;
+    }
+    uint16_t adc = selfTestPiezoPin(PIEZO_PINS[i]);
+    gSelfTestRaw[i] = adc;
+    gConnected[i]   = (adc >= SELFTEST_THRESH_ADC) ? 1 : 0;
+    // Bury the test artefact so we don't trigger a fake hit on the
+    // very next scan: clear the captured peak in this Health window,
+    // re-seed the baseline, and refresh prevSample[] from a fresh
+    // ADC read taken after the pin has settled back to pull-down.
+    peakWindow[i] = 0;
+    baseline[i]   = BASELINE_SEED;
+    prevSample[i] = analogRead(PIEZO_PINS[i]);
+  }
+}
+
 static void sendHealth() {
+  // Refresh per-sensor connectivity probe right before populating the
+  // packet so the central's view is always at most one Health interval
+  // stale.
+  runSelfTest();
+
   HealthPacket h{};
   h.type     = 3;
   h.targetID = TARGET_ID;
   for (int i = 0; i < 4; i++) {
-    h.baseline[i] = baseline[i];
-    h.peak[i]     = peakWindow[i];
-    peakWindow[i] = 0;
+    h.baseline[i]    = baseline[i];
+    h.peak[i]        = peakWindow[i];
+    h.connected[i]   = gConnected[i];
+    h.selfTestRaw[i] = gSelfTestRaw[i];
+    peakWindow[i]    = 0;
   }
   esp_now_send(RECEIVER_MAC, (const uint8_t*)&h, sizeof(h));
-  Serial.printf("Health T=%u bl=[%u,%u,%u,%u] peak=[%u,%u,%u,%u]\n",
+  Serial.printf("Health T=%u bl=[%u,%u,%u,%u] peak=[%u,%u,%u,%u] "
+                "connected=[%u,%u,%u,%u] stRaw=[%u,%u,%u,%u]\n",
                 TARGET_ID,
                 h.baseline[0], h.baseline[1], h.baseline[2], h.baseline[3],
-                h.peak[0], h.peak[1], h.peak[2], h.peak[3]);
+                h.peak[0], h.peak[1], h.peak[2], h.peak[3],
+                h.connected[0], h.connected[1], h.connected[2], h.connected[3],
+                h.selfTestRaw[0], h.selfTestRaw[1], h.selfTestRaw[2], h.selfTestRaw[3]);
 }
 
 // ---------- Hit-window state machine ----------
