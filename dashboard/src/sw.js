@@ -1,5 +1,5 @@
 // Minimal service worker: precache shell + stale-while-revalidate for assets.
-const CACHE = 'kik-v4';
+const CACHE = 'kik-v4b';
 const ASSETS = [
   '/', '/index.html', '/tv.html', '/instructor.html',
   '/css/main.css', '/css/v4.css',

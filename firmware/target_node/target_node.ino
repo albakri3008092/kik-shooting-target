@@ -14,10 +14,9 @@
 #include <ArduinoOTA.h>
 
 // ------------------- USER CONFIG (EDIT THESE) --------------------------
-static const uint8_t TARGET_ID = 1;                   // 1..15
-static const uint8_t RECEIVER_MAC[6] = {
-    0xA0, 0xB7, 0x65, 0x12, 0x34, 0x56                // <<< central MAC
-};
+static const uint8_t TARGET_ID = 1;                   // <<< TUKAR 1..15 untuk setiap target
+// Broadcast MAC — auto-detect, tidak perlu masukkan MAC receiver!
+static const uint8_t RECEIVER_MAC[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 static const char* OTA_HOSTNAME_PREFIX = "kik-target"; // becomes kik-target-01
 static const char* OTA_PASSWORD        = "kik-ota";    // change in production
 
@@ -28,8 +27,8 @@ static const char* OTA_PASSWORD        = "kik-ota";    // change in production
 
 // Default runtime config (overridable via CMD_CONFIG from central).
 struct Config {
-  uint16_t threshold   = 1500;   // ADC threshold for hit detection
-  uint16_t debounceMs  = 150;    // per-sensor debounce
+  uint16_t threshold   = 3500;   // ADC threshold for hit detection (tinggi = kurang sensitif)
+  uint16_t debounceMs  = 80;     // global debounce (80ms = sokong double tap)
   uint16_t hbIntervalMs = 5000;  // heartbeat interval
   uint16_t sensorOkMin = 100;
   uint16_t sensorOkMax = 3000;
@@ -108,6 +107,7 @@ enum : uint8_t {
 // ---- State -----------------------------------------------------------
 static uint16_t hitCount[4]        = {0, 0, 0, 0};
 static uint32_t lastHitMs[4]       = {0, 0, 0, 0};
+static uint32_t lastGlobalHitMs    = 0;   // global debounce — 1 hit per target per debounce window
 static uint32_t lastHeartbeatMs    = 0;
 static esp_now_peer_info_t peerInfo{};
 
@@ -162,7 +162,9 @@ static void registerPeer() {
   memcpy(peerInfo.peer_addr, RECEIVER_MAC, 6);
   peerInfo.channel = 0;
   peerInfo.encrypt = false;
-  if (!esp_now_is_peer_exist(RECEIVER_MAC)) esp_now_add_peer(&peerInfo);
+  if (!esp_now_is_peer_exist(RECEIVER_MAC)) {
+    esp_now_add_peer(&peerInfo);
+  }
 }
 
 static void sendHit(const HitData& h) {
@@ -304,14 +306,20 @@ void loop() {
   // Scan all 4 piezos very fast
   for (int i = 0; i < 4; i++) {
     reading[i] = analogRead(PIEZO_PINS[i]);
-    if (reading[i] > cfg.threshold &&
-        (millis() - lastHitMs[i] > cfg.debounceMs)) {
-      if (!triggered) { triggered = true; firstSensor = i; }
-      lastHitMs[i] = millis();
+  }
+
+  // Global debounce — only allow 1 hit per target per debounce window
+  if (millis() - lastGlobalHitMs > cfg.debounceMs) {
+    for (int i = 0; i < 4; i++) {
+      if (reading[i] > cfg.threshold) {
+        if (!triggered) { triggered = true; firstSensor = i; }
+      }
     }
   }
 
   if (triggered && firstSensor >= 0) {
+    lastGlobalHitMs = millis();
+    for (int i = 0; i < 4; i++) lastHitMs[i] = millis();  // lock all sensors
     // Quickly sample again to capture peak of the wavefront on each sensor
     for (int k = 0; k < 3; k++) {
       for (int i = 0; i < 4; i++) {

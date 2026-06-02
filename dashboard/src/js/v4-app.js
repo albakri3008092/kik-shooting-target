@@ -4,7 +4,7 @@
 (function(){
   'use strict';
   const NUM_TARGETS = 15;
-  const PASS_THRESHOLD = 16;
+  let PASS_THRESHOLD = 16;
 
   // Difficulty presets: par time in seconds, threshold sensitivity
   const SETS = {
@@ -49,7 +49,7 @@
       state.totalScore += state.targets[i].score;
       state.totalHits += state.targets[i].hits;
     }
-    el.textContent = 'SCORE: ' + state.totalScore;
+    el.textContent = 'HIT: ' + state.totalHits;
   }
 
   // ---------- Render pass/fail ----------
@@ -57,7 +57,7 @@
     const pf = $('#passfail');
     const passRow = pf.querySelector('.pass-row');
     const failRow = pf.querySelector('.fail-row');
-    if(state.totalScore >= PASS_THRESHOLD){
+    if(state.totalHits >= PASS_THRESHOLD){
       passRow.classList.remove('dimmed');
       failRow.classList.add('dimmed');
     } else {
@@ -205,8 +205,12 @@
     // Settings modal
     const settingsBtn = $('#btn-settings');
     const modal = $('#settings-modal');
-    const slider = $('#thr-slider');
-    const valDisplay = $('#thr-value');
+    const thrSlider = $('#thr-slider');
+    const thrDisplay = $('#thr-value');
+    const debSlider = $('#deb-slider');
+    const debDisplay = $('#deb-value');
+    const passSlider = $('#pass-slider');
+    const passDisplay = $('#pass-value');
     const saveBtn = $('#thr-save');
     const closeBtn = $('#thr-close');
 
@@ -214,17 +218,25 @@
       settingsBtn.onclick = () => modal.classList.add('open');
       closeBtn.onclick = () => modal.classList.remove('open');
       modal.onclick = (e) => { if(e.target === modal) modal.classList.remove('open'); };
-      slider.oninput = () => { valDisplay.textContent = slider.value; };
+      thrSlider.oninput = () => { thrDisplay.textContent = thrSlider.value; };
+      debSlider.oninput = () => { debDisplay.textContent = debSlider.value + ' ms'; };
+      passSlider.oninput = () => { passDisplay.textContent = passSlider.value + ' hit'; };
       saveBtn.onclick = () => {
-        const thr = parseInt(slider.value, 10);
+        const thr = parseInt(thrSlider.value, 10);
+        const deb = parseInt(debSlider.value, 10);
+        const pm = parseInt(passSlider.value, 10);
+        PASS_THRESHOLD = pm;
+        renderPassFail();
         fetch('/api/config/push', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ threshold: thr, target: 0 })
+          body: JSON.stringify({ threshold: thr, debounce: deb, target: 0 })
         }).then(r => {
           if(r.ok){
-            valDisplay.textContent = thr + ' ✓';
-            setTimeout(() => { valDisplay.textContent = thr; }, 1500);
+            thrDisplay.textContent = thr + ' ✓';
+            debDisplay.textContent = deb + ' ms ✓';
+            passDisplay.textContent = pm + ' hit ✓';
+            setTimeout(() => { thrDisplay.textContent = thr; debDisplay.textContent = deb + ' ms'; passDisplay.textContent = pm + ' hit'; }, 1500);
           }
         }).catch(() => {});
       };

@@ -211,12 +211,22 @@
   <!-- Settings Modal -->
   <div class="modal-overlay" id="settings-modal">
     <div class="modal-box">
-      <div class="modal-title">TETAPAN THRESHOLD</div>
+      <div class="modal-title">TETAPAN SENSOR</div>
       <div class="modal-body">
         <label class="modal-label">Threshold (1000 - 4095)</label>
         <input type="range" id="thr-slider" min="1000" max="4095" step="100" value="3500" class="thr-slider"/>
         <div class="thr-value" id="thr-value">3500</div>
         <div class="thr-hint">Rendah = sensitif &nbsp;|&nbsp; Tinggi = kurang sensitif</div>
+        <div class="modal-divider"></div>
+        <label class="modal-label">Debounce (30 - 300 ms)</label>
+        <input type="range" id="deb-slider" min="30" max="300" step="10" value="80" class="thr-slider"/>
+        <div class="thr-value" id="deb-value">80 ms</div>
+        <div class="thr-hint">Rendah = double tap pantas &nbsp;|&nbsp; Tinggi = elak false hit</div>
+        <div class="modal-divider"></div>
+        <label class="modal-label">Pass Mark (1 - 30 hit)</label>
+        <input type="range" id="pass-slider" min="1" max="30" step="1" value="16" class="thr-slider"/>
+        <div class="thr-value" id="pass-value">16 hit</div>
+        <div class="thr-hint">Bilangan hit minimum untuk PASS</div>
       </div>
       <div class="modal-actions">
         <button class="ctrl-btn modal-save" id="thr-save">SIMPAN</button>

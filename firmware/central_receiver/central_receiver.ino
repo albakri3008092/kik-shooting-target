@@ -27,25 +27,8 @@
 static const char* AP_SSID     = "Target_System";
 static const char* AP_PASSWORD = "12345678";
 
-// <<< Replace with the MAC address of each target ESP32 (rows 1..15) >>>
-static const uint8_t targetMACs[16][6] = {
-    {0x00,0x00,0x00,0x00,0x00,0x00},                   // 0 unused
-    {0xA0,0xB7,0x65,0x00,0x00,0x01},                   // Target 1
-    {0xA0,0xB7,0x65,0x00,0x00,0x02},                   // Target 2
-    {0xA0,0xB7,0x65,0x00,0x00,0x03},                   // Target 3
-    {0xA0,0xB7,0x65,0x00,0x00,0x04},                   // Target 4
-    {0xA0,0xB7,0x65,0x00,0x00,0x05},                   // Target 5
-    {0xA0,0xB7,0x65,0x00,0x00,0x06},                   // Target 6
-    {0xA0,0xB7,0x65,0x00,0x00,0x07},                   // Target 7
-    {0xA0,0xB7,0x65,0x00,0x00,0x08},                   // Target 8
-    {0xA0,0xB7,0x65,0x00,0x00,0x09},                   // Target 9
-    {0xA0,0xB7,0x65,0x00,0x00,0x0A},                   // Target 10
-    {0xA0,0xB7,0x65,0x00,0x00,0x0B},                   // Target 11
-    {0xA0,0xB7,0x65,0x00,0x00,0x0C},                   // Target 12
-    {0xA0,0xB7,0x65,0x00,0x00,0x0D},                   // Target 13
-    {0xA0,0xB7,0x65,0x00,0x00,0x0E},                   // Target 14
-    {0xA0,0xB7,0x65,0x00,0x00,0x0F}                    // Target 15
-};
+// Broadcast MAC — no need to configure individual target MACs!
+static const uint8_t broadcastMAC[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
 static const uint8_t  NUM_TARGETS       = 15;
 static const uint32_t HEALTH_TIMEOUT_MS = 15000;
@@ -179,14 +162,7 @@ static void broadcastCmd(uint8_t cmd, uint8_t targetID, const uint8_t* payload =
   c.targetID    = targetID;
   c.timestampMs = millis();
   if (payload && plen) memcpy(c.payload, payload, plen > 32 ? 32 : plen);
-  if (targetID == 0) {
-    for (int i = 1; i <= NUM_TARGETS; i++) {
-      esp_now_send(targetMACs[i], (const uint8_t*)&c, sizeof(c));
-      delay(5);
-    }
-  } else {
-    esp_now_send(targetMACs[targetID], (const uint8_t*)&c, sizeof(c));
-  }
+  esp_now_send(broadcastMAC, (const uint8_t*)&c, sizeof(c));
 }
 
 // Non-blocking buzzer: we schedule a "buzz off" time and check it in loop().
@@ -482,12 +458,12 @@ void setup() {
     Serial.println("ESP-NOW init failed");
   }
   esp_now_register_recv_cb(onDataReceived);
-  for (int t = 1; t <= NUM_TARGETS; t++) {
-    memcpy(peers[t].peer_addr, targetMACs[t], 6);
-    peers[t].channel = 0;
-    peers[t].encrypt = false;
-    esp_now_add_peer(&peers[t]);
-  }
+  // Register broadcast peer — auto-discovers all targets, no MAC config needed
+  esp_now_peer_info_t bcast{};
+  memcpy(bcast.peer_addr, broadcastMAC, 6);
+  bcast.channel = 0;
+  bcast.encrypt = false;
+  esp_now_add_peer(&bcast);
   esp_wifi_set_protocol(WIFI_IF_STA,
       WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
 
