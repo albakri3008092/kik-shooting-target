@@ -201,6 +201,34 @@
 
     const csvBtn = $('#btn-csv');
     if(csvBtn) csvBtn.onclick = exportCSV;
+
+    // Settings modal
+    const settingsBtn = $('#btn-settings');
+    const modal = $('#settings-modal');
+    const slider = $('#thr-slider');
+    const valDisplay = $('#thr-value');
+    const saveBtn = $('#thr-save');
+    const closeBtn = $('#thr-close');
+
+    if(settingsBtn && modal){
+      settingsBtn.onclick = () => modal.classList.add('open');
+      closeBtn.onclick = () => modal.classList.remove('open');
+      modal.onclick = (e) => { if(e.target === modal) modal.classList.remove('open'); };
+      slider.oninput = () => { valDisplay.textContent = slider.value; };
+      saveBtn.onclick = () => {
+        const thr = parseInt(slider.value, 10);
+        fetch('/api/config/push', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ threshold: thr, target: 0 })
+        }).then(r => {
+          if(r.ok){
+            valDisplay.textContent = thr + ' ✓';
+            setTimeout(() => { valDisplay.textContent = thr; }, 1500);
+          }
+        }).catch(() => {});
+      };
+    }
   }
 
   // ---------- Export CSV ----------

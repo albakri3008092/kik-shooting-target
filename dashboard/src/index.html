@@ -181,6 +181,9 @@
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           CSV
         </button>
+        <button class="ctrl-btn settings-btn" id="btn-settings" title="Tetapan Threshold">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
       </div>
 
     </div>
@@ -204,6 +207,22 @@
   <!-- Power icon bottom left (matching reference) -->
   <div class="power-icon" id="si-power" title="Power">
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#5a6a7a" stroke-width="2"><path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10"/></svg>
+  </div>
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-box">
+      <div class="modal-title">TETAPAN THRESHOLD</div>
+      <div class="modal-body">
+        <label class="modal-label">Threshold (1000 - 4095)</label>
+        <input type="range" id="thr-slider" min="1000" max="4095" step="100" value="3500" class="thr-slider"/>
+        <div class="thr-value" id="thr-value">3500</div>
+        <div class="thr-hint">Rendah = sensitif &nbsp;|&nbsp; Tinggi = kurang sensitif</div>
+      </div>
+      <div class="modal-actions">
+        <button class="ctrl-btn modal-save" id="thr-save">SIMPAN</button>
+        <button class="ctrl-btn modal-close" id="thr-close">TUTUP</button>
+      </div>
+    </div>
   </div>
 </div><!-- /panel -->
 
