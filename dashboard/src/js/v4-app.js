@@ -108,19 +108,18 @@
       btn.textContent = t.hits || i;
       btn.classList.toggle('offline', !t.online);
 
-      // Sensor dots — keep base color (blue/red/yellow/green), dim if offline or failed
+      // Sensor dots — green = OK, red = faulty/offline
       const dotsEl = $('#sdots-'+i);
       if(dotsEl){
         const dots = dotsEl.querySelectorAll('.sdot');
         const statusArr = t.status || [0,0,0,0];
         for(let s=0; s<dots.length; s++){
-          const sensorIdx = s;
-          const st = statusArr[sensorIdx];
-          dots[s].classList.remove('off','s-fail');
-          if(!t.online){
-            dots[s].classList.add('off');
-          } else if(st === 2){
-            dots[s].classList.add('s-fail');
+          const st = statusArr[s];
+          dots[s].className = 'sdot';
+          if(!t.online || st >= 2){
+            dots[s].classList.add('red');
+          } else {
+            dots[s].classList.add('green');
           }
         }
       }
