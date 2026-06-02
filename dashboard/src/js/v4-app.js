@@ -114,7 +114,7 @@
         const dots = dotsEl.querySelectorAll('.sdot');
         const statusArr = t.status || [0,0,0,0];
         for(let s=0; s<dots.length; s++){
-          const sensorIdx = s % 4;
+          const sensorIdx = Math.floor(s / 2);
           const st = statusArr[sensorIdx];
           dots[s].classList.remove('off','s-fail');
           if(!t.online){

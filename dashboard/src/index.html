@@ -15,38 +15,37 @@
   <!-- Title Bar -->
   <div class="panel-title">AUTOMATED SHOOTING TARGET WITH SCORING</div>
 
+  <!-- Info bar — full width -->
+  <div class="info-row">
+    <div class="info-box score-box">
+      <div class="info-label">SCORE</div>
+      <div class="info-display score-display" id="total-score">SCORE: 0</div>
+    </div>
+    <div class="info-box passfail-box">
+      <div class="info-label">PASS/FAIL</div>
+      <div class="info-display passfail-display" id="passfail">
+        <div class="pf-row pass-row"><span class="pf-icon pass-icon">&#10003;</span> PASS</div>
+        <div class="pf-row fail-row"><span class="pf-icon fail-icon">&#10007;</span> FAIL</div>
+      </div>
+    </div>
+    <div class="info-box target-active-box">
+      <div class="target-active-inner">
+        <span class="ta-label">ONLINE<br>TARGET</span>
+        <span class="ta-dot" id="ta-dot"></span>
+        <span class="ta-text" id="ta-text">TARGET ACTIVE</span>
+      </div>
+    </div>
+    <div class="info-box timer-box">
+      <div class="info-label">TIMER</div>
+      <div class="info-display timer-display" id="timer">0:00</div>
+    </div>
+  </div>
+
   <!-- Main Content -->
   <div class="panel-body">
 
     <!-- LEFT: Big Target Display -->
     <div class="left-col">
-      <!-- Top info row -->
-      <div class="info-row">
-        <div class="info-box score-box">
-          <div class="info-label">SCORE</div>
-          <div class="info-display score-display" id="total-score">SCORE: 0</div>
-        </div>
-        <div class="info-box passfail-box">
-          <div class="info-label">PASS/FAIL</div>
-          <div class="info-display passfail-display" id="passfail">
-            <div class="pf-row pass-row"><span class="pf-icon pass-icon">&#10003;</span> PASS</div>
-            <div class="pf-row fail-row"><span class="pf-icon fail-icon">&#10007;</span> FAIL</div>
-          </div>
-        </div>
-        <div class="info-box target-active-box">
-          <div class="target-active-inner">
-            <span class="ta-label">ONLINE<br>TARGET</span>
-            <span class="ta-dot" id="ta-dot"></span>
-            <span class="ta-text" id="ta-text">TARGET ACTIVE</span>
-          </div>
-        </div>
-        <div class="info-box timer-box">
-          <div class="info-label">TIMER</div>
-          <div class="info-display timer-display" id="timer">0:00</div>
-        </div>
-      </div>
-
-      <!-- Big bullseye -->
       <div class="bullseye-wrap">
         <svg id="big-bullseye" viewBox="-120 -120 240 240">
           <defs>
@@ -62,7 +61,6 @@
           <circle cx="0" cy="0" r="40"  fill="none" stroke="#6a7a8a" stroke-width="2"/>
           <circle cx="0" cy="0" r="20"  fill="none" stroke="#6a7a8a" stroke-width="2"/>
           <circle cx="0" cy="0" r="5"   fill="#4a5a6a"/>
-          <!-- crosshairs -->
           <line x1="-110" y1="0" x2="110" y2="0" stroke="#6a7a8a" stroke-width="0.5"/>
           <line x1="0" y1="-110" x2="0" y2="110" stroke="#6a7a8a" stroke-width="0.5"/>
           <g id="all-dots"></g>
@@ -70,168 +68,125 @@
       </div>
     </div>
 
-    <!-- RIGHT: Target Grid + Controls -->
-    <div class="right-col">
+    <!-- CENTER: Target Grid + Controls -->
+    <div class="center-col">
 
-      <!-- Target grid: 3 rows of 5 -->
-      <div class="target-section">
-
-        <!-- Row 1: targets 1-5 -->
+      <!-- Row 1: targets 1-5 + SET 1 -->
+      <div class="target-band">
         <div class="target-row">
           <div class="target-cell" data-tid="1">
             <div class="target-num">1</div>
             <button class="target-btn" id="tbtn-1">1</button>
-            <div class="sensor-dots" id="sdots-1">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="2">
             <div class="target-num">2</div>
             <button class="target-btn" id="tbtn-2">2</button>
-            <div class="sensor-dots" id="sdots-2">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="3">
             <div class="target-num">3</div>
             <button class="target-btn" id="tbtn-3">3</button>
-            <div class="sensor-dots" id="sdots-3">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="4">
             <div class="target-num">4</div>
             <button class="target-btn" id="tbtn-4">4</button>
-            <div class="sensor-dots" id="sdots-4">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="5">
             <div class="target-num">5</div>
             <button class="target-btn" id="tbtn-5">5</button>
-            <div class="sensor-dots" id="sdots-5">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
         </div>
+        <div class="dots-row">
+          <div class="sensor-dots" id="sdots-1"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-2"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-3"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-4"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-5"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+        </div>
+        <button class="set-btn set-active" id="set-1" data-set="1">SET 1</button>
+      </div>
 
-        <!-- Row 2: targets 6-10 -->
+      <!-- Row 2: targets 6-10 + SET 2 -->
+      <div class="target-band">
         <div class="target-row">
           <div class="target-cell" data-tid="6">
             <div class="target-num">6</div>
             <button class="target-btn" id="tbtn-6">6</button>
-            <div class="sensor-dots" id="sdots-6">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="7">
             <div class="target-num">7</div>
             <button class="target-btn" id="tbtn-7">7</button>
-            <div class="sensor-dots" id="sdots-7">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="8">
             <div class="target-num">8</div>
             <button class="target-btn" id="tbtn-8">8</button>
-            <div class="sensor-dots" id="sdots-8">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="9">
             <div class="target-num">9</div>
             <button class="target-btn" id="tbtn-9">9</button>
-            <div class="sensor-dots" id="sdots-9">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="10">
             <div class="target-num">10</div>
             <button class="target-btn" id="tbtn-10">10</button>
-            <div class="sensor-dots" id="sdots-10">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
         </div>
+        <div class="dots-row">
+          <div class="sensor-dots" id="sdots-6"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-7"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-8"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-9"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-10"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+        </div>
+        <button class="set-btn" id="set-2" data-set="2">SET 2</button>
+      </div>
 
-        <!-- Row 3: targets 11-15 -->
+      <!-- Row 3: targets 11-15 + SET 3 -->
+      <div class="target-band">
         <div class="target-row">
           <div class="target-cell" data-tid="11">
             <div class="target-num">11</div>
             <button class="target-btn" id="tbtn-11">11</button>
-            <div class="sensor-dots" id="sdots-11">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="12">
             <div class="target-num">12</div>
             <button class="target-btn" id="tbtn-12">12</button>
-            <div class="sensor-dots" id="sdots-12">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="13">
             <div class="target-num">13</div>
             <button class="target-btn" id="tbtn-13">13</button>
-            <div class="sensor-dots" id="sdots-13">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="14">
             <div class="target-num">14</div>
             <button class="target-btn" id="tbtn-14">14</button>
-            <div class="sensor-dots" id="sdots-14">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
           <div class="target-cell" data-tid="15">
             <div class="target-num">15</div>
             <button class="target-btn" id="tbtn-15">15</button>
-            <div class="sensor-dots" id="sdots-15">
-              <span class="sdot blue"></span><span class="sdot red"></span>
-              <span class="sdot yellow"></span><span class="sdot green"></span>
-            </div>
           </div>
         </div>
-
+        <div class="dots-row">
+          <div class="sensor-dots" id="sdots-11"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-12"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-13"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-14"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-15"><span class="sdot blue"></span><span class="sdot blue"></span><span class="sdot red"></span><span class="sdot red"></span><span class="sdot yellow"></span><span class="sdot yellow"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+        </div>
+        <button class="set-btn" id="set-3" data-set="3">SET 3</button>
       </div>
 
       <!-- Bottom controls -->
       <div class="controls-row">
-        <div class="controls-left">
-          <button class="ctrl-btn start-btn" id="btn-start">START</button>
-          <button class="ctrl-btn reset-btn" id="btn-reset">RESET</button>
-        </div>
+        <button class="ctrl-btn start-btn" id="btn-start">START</button>
+        <button class="ctrl-btn reset-btn" id="btn-reset">RESET</button>
       </div>
 
     </div>
 
-    <!-- FAR RIGHT: SET buttons + status icons -->
-    <div class="set-col">
-      <button class="set-btn set-active" id="set-1" data-set="1">SET 1</button>
-      <button class="set-btn" id="set-2" data-set="2">SET 2</button>
-      <button class="set-btn" id="set-3" data-set="3">SET 3</button>
-
-      <div class="status-icons">
-        <div class="si" id="si-power" title="Power">&#9788;</div>
-        <div class="si" id="si-bt" title="Bluetooth">&#9687;</div>
-        <div class="si online-indicator" id="si-online" title="Online"></div>
-        <div class="si" id="si-signal" title="Signal">&#9677;</div>
-      </div>
+    <!-- FAR RIGHT: status icons -->
+    <div class="status-col">
+      <div class="si" id="si-power" title="Power">&#9788;</div>
+      <div class="si" id="si-bt" title="Bluetooth">&#9687;</div>
+      <div class="si online-indicator" id="si-online" title="Online"></div>
+      <div class="si" id="si-signal" title="Signal">&#9677;</div>
     </div>
 
   </div><!-- /panel-body -->
