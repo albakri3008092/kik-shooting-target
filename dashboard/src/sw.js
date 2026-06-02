@@ -1,8 +1,9 @@
 // Minimal service worker: precache shell + stale-while-revalidate for assets.
-const CACHE = 'kik-v1';
+const CACHE = 'kik-v4';
 const ASSETS = [
   '/', '/index.html', '/tv.html', '/instructor.html',
-  '/css/main.css', '/js/i18n.js', '/js/ws.js', '/js/app.js',
+  '/css/main.css', '/css/v4.css',
+  '/js/i18n.js', '/js/ws.js', '/js/app.js', '/js/v4-app.js',
   '/manifest.webmanifest', '/assets/icon.svg',
 ];
 self.addEventListener('install', e => {
