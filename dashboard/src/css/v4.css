@@ -242,6 +242,12 @@ body{
 }
 .reset-btn{background:linear-gradient(180deg,#8a9cae,#6a7c8e);color:#d8e8f0}
 .reset-btn:hover{background:linear-gradient(180deg,#9aaebe,#7a8c9e)}
+.csv-btn{
+  background:linear-gradient(180deg,#3a7ab8,#2a5a8e);color:#e8f0ff;
+  display:inline-flex;align-items:center;gap:4px;
+}
+.csv-btn:hover{background:linear-gradient(180deg,#4a8ac8,#3a6a9e)}
+.csv-btn svg{display:inline-block;vertical-align:middle}
 
 /* --- Status column (far right) --- */
 .status-col{

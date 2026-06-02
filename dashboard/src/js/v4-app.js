@@ -198,6 +198,36 @@
       startBtn.classList.remove('active');
       startBtn.textContent = 'START';
     };
+
+    const csvBtn = $('#btn-csv');
+    if(csvBtn) csvBtn.onclick = exportCSV;
+  }
+
+  // ---------- Export CSV ----------
+  function exportCSV(){
+    const rows = [['Target','Hits','Score','Sensor 1','Sensor 2','Sensor 3','Sensor 4','Online']];
+    for(let i=1; i<=NUM_TARGETS; i++){
+      const t = state.targets[i];
+      const sensors = (t.status || [0,0,0,0]).map(s => s >= 2 ? 'ROSAK' : 'OK');
+      rows.push([i, t.hits, t.score, sensors[0], sensors[1], sensors[2], sensors[3], t.online ? 'YA' : 'TIDAK']);
+    }
+    const totalScore = state.totalScore || 0;
+    const totalHits = state.totalHits || 0;
+    const pf = totalHits >= PASS_THRESHOLD ? 'PASS' : 'FAIL';
+    rows.push([]);
+    rows.push(['JUMLAH', totalHits, totalScore]);
+    rows.push(['KEPUTUSAN', pf]);
+    rows.push(['SET', state.currentSet]);
+    rows.push(['MASA', fmtTimer(state.session.elapsed)]);
+
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'KIK_Skor_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ---------- WS message handler ----------
