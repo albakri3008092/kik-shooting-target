@@ -95,6 +95,7 @@
       el.classList.add('warning');
     } else {
       el.classList.remove('warning');
+      el.classList.remove('over');
     }
   }
 
@@ -332,6 +333,10 @@
 
     window.KIK_WS.on(onMessage);
     window.KIK_WS.connect('/ws');
+
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    }
   }
 
   document.addEventListener('DOMContentLoaded', boot);
