@@ -231,6 +231,8 @@ void handleTelegramMessages(int numMessages) {
     text.trim();
 
     if (text == "/unlock") {
+      failedAttempts = 0;
+      systemLocked   = false;
       unlockDoor();
       sendAccessGranted();
       bot.sendMessage(chatId, "\xE2\x9C\x85 Door unlocked remotely.", "");
@@ -406,6 +408,9 @@ void processKey(char key) {
 
   if (key == '#') {
     // '#' = confirm / submit PIN
+    if (enteredPIN.length() == 0) {
+      return;
+    }
     if (enteredPIN == correctPIN) {
       // Correct PIN
       failedAttempts = 0;
