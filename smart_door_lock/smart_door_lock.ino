@@ -66,7 +66,7 @@ const int MAX_FAILED_ATTEMPTS = 3;
 
 /* ───────────────────────── Pin assignments ──────────────────────── */
 
-// Relay (12 V electronic lock) — active LOW
+// Relay (12 V electronic lock) — active HIGH (HIGH = unlock, LOW = lock)
 #define RELAY_PIN    26
 
 // LEDs
@@ -286,7 +286,7 @@ void handleTelegramMessages(int numMessages) {
 
 void unlockDoor() {
   doorLocked = false;
-  digitalWrite(RELAY_PIN, LOW);    // energise relay — unlock
+  digitalWrite(RELAY_PIN, HIGH);   // energise relay — unlock
   digitalWrite(GREEN_LED, HIGH);
   digitalWrite(RED_LED,   LOW);
   unlockTime = millis();
@@ -297,7 +297,7 @@ void unlockDoor() {
 
 void lockDoor() {
   doorLocked = true;
-  digitalWrite(RELAY_PIN, HIGH);   // de-energise relay — lock
+  digitalWrite(RELAY_PIN, LOW);    // de-energise relay — lock
   digitalWrite(GREEN_LED, LOW);
   digitalWrite(RED_LED,   LOW);
   unlockTime = 0;
@@ -476,8 +476,8 @@ void setup() {
   pinMode(RED_LED,   OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
 
-  // Start locked
-  digitalWrite(RELAY_PIN, HIGH);
+  // Start locked — LOW keeps relay off so solenoid stays locked on boot
+  digitalWrite(RELAY_PIN, LOW);
   digitalWrite(GREEN_LED, LOW);
   digitalWrite(RED_LED,   LOW);
 
