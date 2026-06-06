@@ -252,11 +252,15 @@ void handleTelegramMessages(int numMessages) {
     else if (text.startsWith("/setpin ")) {
       String newPin = text.substring(8);
       newPin.trim();
-      if (newPin.length() >= 4 && newPin.length() <= 8) {
+      bool allDigits = newPin.length() >= 4 && newPin.length() <= 8;
+      for (unsigned int ci = 0; allDigits && ci < newPin.length(); ci++) {
+        if (newPin[ci] < '0' || newPin[ci] > '9') allDigits = false;
+      }
+      if (allDigits) {
         correctPIN = newPin;
         bot.sendMessage(chatId, "\xE2\x9C\x85 PIN changed successfully.", "");
       } else {
-        bot.sendMessage(chatId, "\xE2\x9D\x8C PIN must be 4-8 digits.", "");
+        bot.sendMessage(chatId, "\xE2\x9D\x8C PIN must be 4-8 digits (0-9 only).", "");
       }
     }
     else if (text == "/help" || text == "/start") {
@@ -535,6 +539,7 @@ void loop() {
     if (millis() - lockoutStart >= LOCKOUT_DURATION) {
       systemLocked   = false;
       failedAttempts = 0;
+      digitalWrite(RED_LED, LOW);
       lcdShowReady();
     }
   }
