@@ -7,7 +7,7 @@
  *
  * Hardware:
  *   - ESP32 Dev Module
- *   - 4x4 Membrane Matrix Keypad (16 keys) — Techmakers
+ *   - 4x3 Membrane Matrix Keypad (12 keys) — Techmakers
  *   - 20x4 I2C LCD Display
  *   - Green LED  (access granted)
  *   - Red LED    (access denied)
@@ -91,18 +91,18 @@ const int MAX_FAILED_ATTEMPTS = 3;
 /* ───────────────────────── Keypad setup ─────────────────────────── */
 
 const byte ROWS = 4;
-const byte COLS = 4;
+const byte COLS = 3;
 
 char keys[ROWS][COLS] = {
-  {'1', '2', '3', 'A'},
-  {'4', '5', '6', 'B'},
-  {'7', '8', '9', 'C'},
-  {'*', '0', '#', 'D'}
+  {'1', '2', '3'},
+  {'4', '5', '6'},
+  {'7', '8', '9'},
+  {'*', '0', '#'}
 };
 
 // Keypad row and column pins — adjust for your wiring
 byte rowPins[ROWS] = {13, 12, 15, 2};
-byte colPins[COLS] = {4,  16, 17, 5};
+byte colPins[COLS] = {4,  16, 17};
 
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 

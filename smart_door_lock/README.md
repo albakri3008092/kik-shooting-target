@@ -12,7 +12,7 @@
 | # | Component | Description |
 |---|---|---|
 | 1 | ESP32 Dev Module | Main microcontroller (WiFi + GPIO) |
-| 2 | 4×4 Membrane Matrix Keypad (Techmakers) | 16-key number/symbol input |
+| 2 | 4×3 Membrane Matrix Keypad (Techmakers) | 12-key number input (0-9, *, #) |
 | 3 | 20×4 I2C LCD Display | Status display (address 0x27 or 0x3F) |
 | 4 | Green LED | Access granted indicator |
 | 5 | Red LED | Access denied indicator |
@@ -28,7 +28,7 @@
 
 | Feature | Description |
 |---|---|
-| PIN Keypad 4×4 | Enter security PIN to unlock |
+| PIN Keypad 4×3 | Enter security PIN to unlock |
 | LCD 20×4 (I2C) | Real-time status display |
 | Green LED | Access granted indicator |
 | Red LED | Access denied indicator |
@@ -68,14 +68,13 @@ GPIO 27     Green LED (+)          220 Ω resistor to GND
 GPIO 14     Red LED (+)            220 Ω resistor to GND
 GPIO 25     Buzzer (+)             passive buzzer to GND
 
-GPIO 13     Keypad Row 1           4×4 membrane keypad
+GPIO 13     Keypad Row 1           4×3 membrane keypad
 GPIO 12     Keypad Row 2
 GPIO 15     Keypad Row 3
 GPIO  2     Keypad Row 4
 GPIO  4     Keypad Col 1
 GPIO 16     Keypad Col 2
 GPIO 17     Keypad Col 3
-GPIO  5     Keypad Col 4
 
 GPIO 21     LCD SDA (I2C)          20×4 LCD with I2C backpack
 GPIO 22     LCD SCL (I2C)          address 0x27 (or 0x3F)
@@ -94,7 +93,7 @@ External    12V 1A Power Supply → DC Jack → Relay COM/NO → Solenoid Lock
 2. **LEDs**: Connect anode (+) to GPIO through a 220 Ω resistor; cathode to GND.
 3. **I2C LCD**: Default address `0x27`. If your display uses `0x3F`, change
    the address in the sketch (`LiquidCrystal_I2C lcd(0x3F, 20, 4);`).
-4. **Keypad**: Connect the 8-pin ribbon directly to the GPIOs listed above.
+4. **Keypad**: Connect the 7-pin ribbon directly to the GPIOs listed above (4 rows + 3 columns).
 
 ## Required Libraries
 
