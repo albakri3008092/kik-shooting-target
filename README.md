@@ -15,6 +15,13 @@ Two flavours in the same repo:
 **Recommended path:** get the demo working end-to-end first with 3 targets,
 then graduate to the full v2 system when you're ready.
 
+### Smart Door Lock (ship security)
+
+A standalone ESP32 smart door lock with PIN keypad, LCD display, and
+Telegram notifications — designed for ship communication rooms.
+See **[smart_door_lock/README.md](smart_door_lock/README.md)** for the full
+guide, wiring diagram, and Telegram bot setup.
+
 ## Quick start — DEMO (3 targets, no libraries)
 
 ```
@@ -72,6 +79,7 @@ kik-shooting-target/
 │   ├── SETUP_MY.md          Full step-by-step in Bahasa Malaysia (the original PDF, re-typed)
 │   ├── SETUP_EN.md          English translation
 │   └── wiring.md            Pinout / wiring diagrams
+├── smart_door_lock/          ESP32 smart door lock with Telegram (ship security)
 ├── scripts/
 │   └── build_data.sh        Copies dashboard/src → firmware/central_receiver/data
 └── .github/workflows/       CI (arduino-cli compile + dashboard lint)
