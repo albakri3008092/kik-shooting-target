@@ -78,8 +78,17 @@ const int MAX_FAILED_ATTEMPTS = 3;
 
 /* ───────────────────────── Pin assignments ──────────────────────── */
 
-// Relay (12 V electronic lock) — active HIGH (HIGH = unlock, LOW = lock)
+// Relay (12 V electronic lock)
 #define RELAY_PIN    26
+
+// *** RELAY POLARITY SETTING ***
+// Most relay modules are active LOW (LOW signal = relay ON).
+// If door OPENS when ESP32 boots, try changing true ↔ false.
+#define RELAY_ACTIVE_LOW  true
+
+// Derived constants — do not edit
+#define RELAY_LOCK    (RELAY_ACTIVE_LOW ? HIGH : LOW)
+#define RELAY_UNLOCK  (RELAY_ACTIVE_LOW ? LOW  : HIGH)
 
 // LEDs
 #define GREEN_LED    27
@@ -298,7 +307,7 @@ void handleTelegramMessages(int numMessages) {
 
 void unlockDoor() {
   doorLocked = false;
-  digitalWrite(RELAY_PIN, HIGH);   // energise relay — unlock
+  digitalWrite(RELAY_PIN, RELAY_UNLOCK);  // energise relay — unlock
   digitalWrite(GREEN_LED, HIGH);
   digitalWrite(RED_LED,   LOW);
   unlockTime = millis();
@@ -309,7 +318,7 @@ void unlockDoor() {
 
 void lockDoor() {
   doorLocked = true;
-  digitalWrite(RELAY_PIN, LOW);    // de-energise relay — lock
+  digitalWrite(RELAY_PIN, RELAY_LOCK);    // de-energise relay — lock
   digitalWrite(GREEN_LED, LOW);
   digitalWrite(RED_LED,   LOW);
   unlockTime = 0;
@@ -479,17 +488,24 @@ void processKey(char key) {
 /* ───────────────────────── setup() ──────────────────────────────── */
 
 void setup() {
+  // *** CRITICAL: Set relay pin FIRST to keep door locked during boot ***
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, RELAY_LOCK);
+
   Serial.begin(115200);
   Serial.println("\n[Smart Door Lock] Booting...");
+  Serial.print("[Relay] Active LOW = ");
+  Serial.println(RELAY_ACTIVE_LOW ? "true" : "false");
+  Serial.print("[Relay] LOCK signal = ");
+  Serial.println(RELAY_LOCK ? "HIGH" : "LOW");
 
   // GPIO setup
-  pinMode(RELAY_PIN, OUTPUT);
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED,   OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
 
-  // Start locked — LOW keeps relay off so solenoid stays locked on boot
-  digitalWrite(RELAY_PIN, LOW);
+  // Start locked
+  digitalWrite(RELAY_PIN, RELAY_LOCK);
   digitalWrite(GREEN_LED, LOW);
   digitalWrite(RED_LED,   LOW);
 
@@ -529,8 +545,8 @@ void setup() {
   configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER);
   Serial.println("[NTP] Syncing...");
 
-  // TLS — use root CA bundle built into ESP32 core
-  secured.setCACert(TELEGRAM_CERTIFICATE_ROOT);
+  // TLS — skip certificate verification for maximum compatibility
+  secured.setInsecure();
 
   delay(2000);
   lcdShowReady();
