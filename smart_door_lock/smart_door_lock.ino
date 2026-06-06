@@ -5,6 +5,18 @@
  * Door ID  : SHIP-DR-01
  * Location : Communication Room
  *
+ * Hardware:
+ *   - ESP32 Dev Module
+ *   - 4x4 Membrane Matrix Keypad (16 keys) — Techmakers
+ *   - 20x4 I2C LCD Display
+ *   - Green LED  (access granted)
+ *   - Red LED    (access denied)
+ *   - Buzzer (audio feedback & alarm)
+ *   - Relay Module (5V, single channel)
+ *   - 12V DC Solenoid Door Lock
+ *   - AC to DC Power Supply Adapter 12V 1A
+ *   - Female DC Power Jack Socket DC-005 (5.5mm x 2.1mm)
+ *
  * Features:
  *   - PIN access via 4x4 Keypad
  *   - 20x4 I2C LCD status display

@@ -7,6 +7,23 @@
 
 ---
 
+## Hardware / Bill of Materials
+
+| # | Component | Description |
+|---|---|---|
+| 1 | ESP32 Dev Module | Main microcontroller (WiFi + GPIO) |
+| 2 | 4×4 Membrane Matrix Keypad (Techmakers) | 16-key number/symbol input |
+| 3 | 20×4 I2C LCD Display | Status display (address 0x27 or 0x3F) |
+| 4 | Green LED | Access granted indicator |
+| 5 | Red LED | Access denied indicator |
+| 6 | Buzzer | Audio feedback & security alarm |
+| 7 | Relay Module (5V, single channel) | Switches 12V solenoid circuit |
+| 8 | 12V DC Solenoid Door Lock | Electronic bolt lock |
+| 9 | AC to DC Power Supply Adapter 12V 1A | Powers solenoid lock |
+| 10 | Female DC Power Jack DC-005 (5.5mm×2.1mm) | 12V power input connector |
+| 11 | 220Ω Resistor ×2 | Current limiting for LEDs |
+| 12 | Jumper wires | Connections |
+
 ## Features
 
 | Feature | Description |
@@ -16,7 +33,7 @@
 | Green LED | Access granted indicator |
 | Red LED | Access denied indicator |
 | Buzzer | Audio feedback & security alarm |
-| 12 V Electronic Lock | Relay-driven solenoid lock |
+| 12V Solenoid Lock | Relay-driven electronic door lock |
 | Telegram Notifications | Real-time alerts to your phone |
 | Remote Control | Unlock/lock door via Telegram bot |
 | Intrusion Detection | Lockout + alert after 3 wrong PINs |
@@ -46,7 +63,7 @@ The system sends automatic alerts for:
 ```
 ESP32 Pin   Component              Notes
 ─────────   ─────────              ─────
-GPIO 26     Relay IN               12 V electronic lock (active LOW)
+GPIO 26     Relay IN               12V solenoid lock (active HIGH)
 GPIO 27     Green LED (+)          220 Ω resistor to GND
 GPIO 14     Red LED (+)            220 Ω resistor to GND
 GPIO 25     Buzzer (+)             passive buzzer to GND
@@ -65,14 +82,15 @@ GPIO 22     LCD SCL (I2C)          address 0x27 (or 0x3F)
 
 VIN (5 V)   LCD VCC, Relay VCC
 GND         Common ground
-External    12 V supply → Relay COM/NO → Lock solenoid
+External    12V 1A Power Supply → DC Jack → Relay COM/NO → Solenoid Lock
 ```
 
 ### Wiring Notes
 
-1. **Relay module**: Use a single-channel 5 V relay module.
-   Connect the 12 V lock between relay **COM** and **NO** terminals,
-   with the 12 V external supply providing power.
+1. **Relay module**: Use a single-channel 5V relay module.
+   Connect the 12V solenoid lock between relay **COM** and **NO** terminals.
+   The 12V 1A power supply connects through the DC-005 jack to provide power.
+   Relay logic: HIGH = unlock (relay energised), LOW = lock (relay off).
 2. **LEDs**: Connect anode (+) to GPIO through a 220 Ω resistor; cathode to GND.
 3. **I2C LCD**: Default address `0x27`. If your display uses `0x3F`, change
    the address in the sketch (`LiquidCrystal_I2C lcd(0x3F, 20, 4);`).
