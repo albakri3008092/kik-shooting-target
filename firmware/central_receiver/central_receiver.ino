@@ -533,7 +533,7 @@ void setup() {
       if (deserializeJson(d, data, len)) { req->send(400); return; }
       uint8_t pl[32] = {0};
       uint16_t thr  = d["threshold"]  | 1500;
-      uint16_t deb  = d["debounce"]   | 150;
+      uint16_t deb  = d["debounce"]   | 80;
       uint16_t hb   = d["heartbeat"]  | 5000;
       uint16_t smin = d["sensorMin"]  | 100;
       uint16_t smax = d["sensorMax"]  | 3000;
