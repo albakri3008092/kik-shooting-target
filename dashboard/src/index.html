@@ -1,62 +1,243 @@
 <!DOCTYPE html>
-<html lang="ms" data-theme="dark">
+<html lang="ms">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <meta name="theme-color" content="#0b1221"/>
-  <title>KIK — Sistem Sasaran Menembak</title>
+  <meta name="theme-color" content="#c0c8d0"/>
+  <title>KIK V4 — Automated Shooting Target</title>
   <link rel="manifest" href="/manifest.webmanifest"/>
   <link rel="icon" type="image/svg+xml" href="/assets/icon.svg"/>
-  <link rel="stylesheet" href="/css/main.css"/>
+  <link rel="stylesheet" href="/css/v4.css"/>
 </head>
 <body>
 
-<header class="appbar">
-  <div class="brand">
-    <div class="logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#05121c" stroke-width="2.4">
-        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="#05121c"/>
-      </svg>
+<div class="panel">
+  <!-- Title Bar -->
+  <div class="panel-title">AUTOMATED SHOOTING TARGET WITH SCORING</div>
+
+  <!-- Info bar — full width -->
+  <div class="info-row">
+    <div class="info-box score-box">
+      <div class="info-label">SCORE</div>
+      <div class="info-display score-display" id="total-score">SCORE: 0</div>
     </div>
-    <div>
-      <div class="title" data-i="app_title">Sistem Sasaran Menembak</div>
-      <div class="subtitle" data-i="app_subtitle">KIK — Papan Pemuka Langsung</div>
+    <div class="info-box passfail-box">
+      <div class="info-label">PASS/FAIL</div>
+      <div class="info-display passfail-display" id="passfail">
+        <div class="pf-row pass-row"><span class="pf-icon pass-icon">&#10003;</span> PASS</div>
+        <div class="pf-row fail-row"><span class="pf-icon fail-icon">&#10007;</span> FAIL</div>
+      </div>
+    </div>
+    <div class="info-box target-active-box">
+      <div class="target-active-inner">
+        <span class="ta-label">ONLINE<br>TARGET</span>
+        <span class="ta-dot" id="ta-dot"></span>
+        <span class="ta-text" id="ta-text">TARGET ACTIVE</span>
+      </div>
+    </div>
+    <div class="info-box timer-box">
+      <div class="info-label">TIMER</div>
+      <div class="info-display timer-display" id="timer">0:00</div>
     </div>
   </div>
-  <div class="spacer"></div>
-  <div id="top-timer" class="timer">00:00.0</div>
-  <div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:0 6px;color:var(--text-dim)">
-    <span id="conn-dot" class="status-dot offline"></span>
-    <span id="conn-label" data-i="disconnected">Disconnected</span>
+
+  <!-- Main Content -->
+  <div class="panel-body">
+
+    <!-- LEFT: Big Target Display -->
+    <div class="left-col">
+      <div class="bullseye-wrap">
+        <svg id="big-bullseye" viewBox="-120 -120 240 240">
+          <defs>
+            <radialGradient id="bg-grad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#8a9bb0"/>
+              <stop offset="100%" stop-color="#5a6a7a"/>
+            </radialGradient>
+          </defs>
+          <rect x="-120" y="-120" width="240" height="240" rx="24" fill="url(#bg-grad)"/>
+          <circle cx="0" cy="0" r="100" fill="none" stroke="#6a7a8a" stroke-width="2"/>
+          <circle cx="0" cy="0" r="80"  fill="none" stroke="#6a7a8a" stroke-width="2"/>
+          <circle cx="0" cy="0" r="60"  fill="none" stroke="#6a7a8a" stroke-width="2"/>
+          <circle cx="0" cy="0" r="40"  fill="none" stroke="#6a7a8a" stroke-width="2"/>
+          <circle cx="0" cy="0" r="20"  fill="none" stroke="#6a7a8a" stroke-width="2"/>
+          <circle cx="0" cy="0" r="5"   fill="#4a5a6a"/>
+          <line x1="-110" y1="0" x2="110" y2="0" stroke="#6a7a8a" stroke-width="0.5"/>
+          <line x1="0" y1="-110" x2="0" y2="110" stroke="#6a7a8a" stroke-width="0.5"/>
+          <g id="all-dots"></g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- CENTER: Target Grid + Controls -->
+    <div class="center-col">
+
+      <!-- Row 1: targets 1-5 + SET 1 -->
+      <div class="target-band">
+        <div class="target-row">
+          <div class="target-cell" data-tid="1">
+            <div class="target-num">1</div>
+            <button class="target-btn" id="tbtn-1">1</button>
+          </div>
+          <div class="target-cell" data-tid="2">
+            <div class="target-num">2</div>
+            <button class="target-btn" id="tbtn-2">2</button>
+          </div>
+          <div class="target-cell" data-tid="3">
+            <div class="target-num">3</div>
+            <button class="target-btn" id="tbtn-3">3</button>
+          </div>
+          <div class="target-cell" data-tid="4">
+            <div class="target-num">4</div>
+            <button class="target-btn" id="tbtn-4">4</button>
+          </div>
+          <div class="target-cell" data-tid="5">
+            <div class="target-num">5</div>
+            <button class="target-btn" id="tbtn-5">5</button>
+          </div>
+        </div>
+        <div class="dots-row">
+          <div class="sensor-dots" id="sdots-1"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-2"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-3"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-4"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-5"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+        </div>
+        <button class="set-btn set-active" id="set-1" data-set="1">SET 1</button>
+      </div>
+
+      <!-- Row 2: targets 6-10 + SET 2 -->
+      <div class="target-band">
+        <div class="target-row">
+          <div class="target-cell" data-tid="6">
+            <div class="target-num">6</div>
+            <button class="target-btn" id="tbtn-6">6</button>
+          </div>
+          <div class="target-cell" data-tid="7">
+            <div class="target-num">7</div>
+            <button class="target-btn" id="tbtn-7">7</button>
+          </div>
+          <div class="target-cell" data-tid="8">
+            <div class="target-num">8</div>
+            <button class="target-btn" id="tbtn-8">8</button>
+          </div>
+          <div class="target-cell" data-tid="9">
+            <div class="target-num">9</div>
+            <button class="target-btn" id="tbtn-9">9</button>
+          </div>
+          <div class="target-cell" data-tid="10">
+            <div class="target-num">10</div>
+            <button class="target-btn" id="tbtn-10">10</button>
+          </div>
+        </div>
+        <div class="dots-row">
+          <div class="sensor-dots" id="sdots-6"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-7"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-8"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-9"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-10"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+        </div>
+        <button class="set-btn" id="set-2" data-set="2">SET 2</button>
+      </div>
+
+      <!-- Row 3: targets 11-15 + SET 3 -->
+      <div class="target-band">
+        <div class="target-row">
+          <div class="target-cell" data-tid="11">
+            <div class="target-num">11</div>
+            <button class="target-btn" id="tbtn-11">11</button>
+          </div>
+          <div class="target-cell" data-tid="12">
+            <div class="target-num">12</div>
+            <button class="target-btn" id="tbtn-12">12</button>
+          </div>
+          <div class="target-cell" data-tid="13">
+            <div class="target-num">13</div>
+            <button class="target-btn" id="tbtn-13">13</button>
+          </div>
+          <div class="target-cell" data-tid="14">
+            <div class="target-num">14</div>
+            <button class="target-btn" id="tbtn-14">14</button>
+          </div>
+          <div class="target-cell" data-tid="15">
+            <div class="target-num">15</div>
+            <button class="target-btn" id="tbtn-15">15</button>
+          </div>
+        </div>
+        <div class="dots-row">
+          <div class="sensor-dots" id="sdots-11"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-12"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-13"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-14"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+          <div class="sensor-dots" id="sdots-15"><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span><span class="sdot green"></span></div>
+        </div>
+        <button class="set-btn" id="set-3" data-set="3">SET 3</button>
+      </div>
+
+      <!-- Bottom controls -->
+      <div class="controls-row">
+        <button class="ctrl-btn start-btn" id="btn-start">START</button>
+        <button class="ctrl-btn reset-btn" id="btn-reset">RESET</button>
+        <button class="ctrl-btn csv-btn" id="btn-csv" title="Muat Turun CSV">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          CSV
+        </button>
+        <button class="ctrl-btn settings-btn" id="btn-settings" title="Tetapan Threshold">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- FAR RIGHT: status icons (matching reference) -->
+    <div class="status-col">
+      <div class="si" id="si-brightness" title="Brightness">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#5a6a7a" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </div>
+      <div class="si" id="si-usb" title="USB">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#5a6a7a" stroke-width="2"><path d="M12 2v15M12 17a2 2 0 100 4 2 2 0 000-4zM7 7l5-5 5 5M7 12h2M15 12h2"/></svg>
+      </div>
+      <div class="si online-dot" id="si-online" title="Online"></div>
+      <div class="si" id="si-signal" title="Signal">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#5a6a7a" stroke-width="2"><path d="M5 12.55a11 11 0 0114.08 0M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg>
+      </div>
+    </div>
+
+  </div><!-- /panel-body -->
+
+  <!-- Power icon bottom left (matching reference) -->
+  <div class="power-icon" id="si-power" title="Power">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#5a6a7a" stroke-width="2"><path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10"/></svg>
   </div>
-  <button id="btn-lang" class="icon-btn lang-pill" title="Language"><span id="lang-label">MS</span></button>
-  <button id="btn-theme" class="icon-btn" title="Theme">
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
-  </button>
-</header>
-
-<nav class="tabs" id="tabs"></nav>
-
-<main>
-  <section id="view-live"     class="view active"></section>
-  <section id="view-score"    class="view"></section>
-  <section id="view-health"   class="view"></section>
-  <section id="view-session"  class="view"></section>
-  <section id="view-history"  class="view"></section>
-  <section id="view-settings" class="view"></section>
-</main>
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-box">
+      <div class="modal-title">TETAPAN SENSOR</div>
+      <div class="modal-body">
+        <label class="modal-label">Threshold (1000 - 4095)</label>
+        <input type="range" id="thr-slider" min="1000" max="4095" step="100" value="3500" class="thr-slider"/>
+        <div class="thr-value" id="thr-value">3500</div>
+        <div class="thr-hint">Rendah = sensitif &nbsp;|&nbsp; Tinggi = kurang sensitif</div>
+        <div class="modal-divider"></div>
+        <label class="modal-label">Debounce (30 - 300 ms)</label>
+        <input type="range" id="deb-slider" min="30" max="300" step="10" value="80" class="thr-slider"/>
+        <div class="thr-value" id="deb-value">80 ms</div>
+        <div class="thr-hint">Rendah = double tap pantas &nbsp;|&nbsp; Tinggi = elak false hit</div>
+        <div class="modal-divider"></div>
+        <label class="modal-label">Pass Mark (1 - 30 hit)</label>
+        <input type="range" id="pass-slider" min="1" max="30" step="1" value="16" class="thr-slider"/>
+        <div class="thr-value" id="pass-value">16 hit</div>
+        <div class="thr-hint">Bilangan hit minimum untuk PASS</div>
+      </div>
+      <div class="modal-actions">
+        <button class="ctrl-btn modal-save" id="thr-save">SIMPAN</button>
+        <button class="ctrl-btn modal-close" id="thr-close">TUTUP</button>
+      </div>
+    </div>
+  </div>
+</div><!-- /panel -->
 
 <script src="/js/i18n.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
-<script>
-  // Keep language pill label in sync
-  const syncLang = () => {
-    const el = document.getElementById('lang-label');
-    if(el) el.textContent = (window.KIK_LANG||'ms').toUpperCase();
-  };
-  window.addEventListener('langchange', syncLang);
-  document.addEventListener('DOMContentLoaded', syncLang);
-</script>
+<script src="/js/v4-app.js"></script>
 </body>
 </html>
