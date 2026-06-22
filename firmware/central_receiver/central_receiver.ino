@@ -450,9 +450,10 @@ void setup() {
   }
 
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  WiFi.softAP(AP_SSID, AP_PASSWORD, 1);  // Fixed channel 1 for stability
+  esp_wifi_set_max_tx_power(82);          // Max TX power 20.5 dBm
   IPAddress ip = WiFi.softAPIP();
-  Serial.printf("AP %s @ %s\n", AP_SSID, ip.toString().c_str());
+  Serial.printf("AP %s @ %s (ch1, 20.5dBm)\n", AP_SSID, ip.toString().c_str());
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW init failed");
@@ -461,7 +462,7 @@ void setup() {
   // Register broadcast peer — auto-discovers all targets, no MAC config needed
   esp_now_peer_info_t bcast{};
   memcpy(bcast.peer_addr, broadcastMAC, 6);
-  bcast.channel = 0;
+  bcast.channel = 1;   // Must match AP channel
   bcast.encrypt = false;
   esp_now_add_peer(&bcast);
   esp_wifi_set_protocol(WIFI_IF_STA,

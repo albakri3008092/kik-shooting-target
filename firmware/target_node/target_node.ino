@@ -116,8 +116,8 @@ static HitData   pendingPkt{};
 static bool      pendingValid = false;
 static uint32_t  pendingSentMs = 0;
 static uint8_t   pendingRetries = 0;
-static const uint8_t  MAX_RETRIES   = 4;
-static const uint32_t RETRY_EVERY_MS = 120;
+static const uint8_t  MAX_RETRIES   = 8;
+static const uint32_t RETRY_EVERY_MS = 100;
 static uint32_t nextPacketID = 1;
 
 // ---- Helpers ----------------------------------------------------------
@@ -160,7 +160,7 @@ static void saveConfig() {
 static void registerPeer() {
   memset(&peerInfo, 0, sizeof(peerInfo));
   memcpy(peerInfo.peer_addr, RECEIVER_MAC, 6);
-  peerInfo.channel = 0;
+  peerInfo.channel = 1;   // Fixed channel 1 (match receiver AP)
   peerInfo.encrypt = false;
   if (!esp_now_is_peer_exist(RECEIVER_MAC)) {
     esp_now_add_peer(&peerInfo);
@@ -284,6 +284,8 @@ void setup() {
   analogSetPinAttenuation(BATT_PIN, ADC_11db);
 
   WiFi.mode(WIFI_STA);
+  esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);  // Fixed channel 1 (match receiver)
+  esp_wifi_set_max_tx_power(82);                   // Max TX power 20.5 dBm
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW init failed");
     delay(1000);
@@ -294,7 +296,10 @@ void setup() {
   esp_wifi_set_protocol(WIFI_IF_STA,
       WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
 
-  Serial.printf("KIK Target %u ready (fw %d.%d) MAC %s\n",
+  // Stagger heartbeat start so targets don't all fire at once
+  lastHeartbeatMs = millis() - (TARGET_ID * 300);
+
+  Serial.printf("KIK Target %u ready (fw %d.%d) ch1 20.5dBm MAC %s\n",
       TARGET_ID, FW_MAJOR, FW_MINOR, WiFi.macAddress().c_str());
 }
 
