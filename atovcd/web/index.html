@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#070d10"/>
+  <title>ATOVCD — Operator Console</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg"/>
+  <link rel="stylesheet" href="/css/atovcd.css"/>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="/assets/icon.svg" alt="" width="30" height="30"/>
+    <div>
+      <div class="brand-title">ATOVCD</div>
+      <div class="brand-sub" data-i="brand_sub">Automated Target Observation &amp; Visual Change Detection</div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="chip"><span data-i="session">Sesi</span> <b id="chip-session">—</b></div>
+  <div class="chip"><span data-i="uptime">Operasi</span> <b id="chip-duration">00:00:00</b></div>
+  <div class="chip"><span class="dot" id="chip-dot"></span><b id="chip-state">OFFLINE</b></div>
+  <div class="chip mono" id="chip-clock">--:--:--</div>
+  <button class="btn ghost" id="btn-lang">EN</button>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-view="live" data-i="tab_live">LIVE</button>
+  <button class="tab" data-view="change" data-i="tab_change">CHANGE MAP</button>
+  <button class="tab" data-view="history" data-i="tab_history">HISTORY</button>
+  <button class="tab" data-view="report" data-i="tab_report">REPORT</button>
+  <button class="tab" data-view="settings" data-i="tab_settings">SETTINGS</button>
+  <div class="spacer"></div>
+  <button class="btn primary" id="btn-session" data-i="start_session">MULA SESI</button>
+</nav>
+
+<main>
+  <!-- ------------------------------------------------------------ LIVE -->
+  <section class="view active" id="view-live">
+    <div class="live-grid">
+      <div class="panel camera">
+        <div class="panel-head"><span data-i="live_camera">KAMERA LANGSUNG</span><span class="mono" id="cam-res">—</span></div>
+        <div class="stage">
+          <img id="stream" alt="live camera"/>
+          <canvas id="overlay"></canvas>
+        </div>
+      </div>
+      <div class="side">
+        <div class="panel">
+          <div class="panel-head" data-i="target_status">STATUS SASARAN</div>
+          <div class="primary" id="primary-target">
+            <div class="primary-state"><span class="dot" id="primary-dot"></span><b id="primary-name">—</b></div>
+            <div class="primary-change" id="primary-change">—</div>
+            <div class="meter"><i id="primary-bar"></i></div>
+            <div class="primary-conf"><span data-i="confidence">Keyakinan</span> <b id="primary-conf">—</b></div>
+          </div>
+          <ul class="target-list" id="target-list"></ul>
+        </div>
+        <div class="panel">
+          <div class="panel-head" data-i="system_health">KESIHATAN SISTEM</div>
+          <div class="kv"><span data-i="camera">Kamera</span><b id="hp-camera">—</b></div>
+          <div class="kv"><span>IMU / Gimbal</span><b id="hp-imu">—</b></div>
+          <div class="kv"><span data-i="battery">Bateri</span><b id="hp-batt">—</b></div>
+          <div class="kv"><span data-i="fps">Kadar bingkai</span><b id="hp-fps">—</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="counters" id="counters">
+      <div class="counter new"><span data-i="c_new">BARU</span><b id="c-new">00</b></div>
+      <div class="counter old"><span data-i="c_old">LAMA</span><b id="c-old">00</b></div>
+      <div class="counter unc"><span data-i="c_unc">TIDAK PASTI</span><b id="c-unc">00</b></div>
+      <div class="counter tot"><span data-i="c_tot">JUMLAH</span><b id="c-tot">00</b></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------ CHANGE MAP -->
+  <section class="view" id="view-change">
+    <div class="change-grid">
+      <div class="panel">
+        <div class="panel-head" data-i="change_map">PETA PERUBAHAN VISUAL</div>
+        <div class="stage plain"><canvas id="map"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head" data-i="legend">PETUNJUK</div>
+        <ul class="legend">
+          <li><span class="sw new"></span><span data-i="l_new">Perubahan visual baharu</span></li>
+          <li><span class="sw old"></span><span data-i="l_old">Perubahan lama / historikal</span></li>
+          <li><span class="sw unc"></span><span data-i="l_unc">Tidak pasti — perlu semakan</span></li>
+          <li><span class="sw det"></span><span data-i="l_det">Normal / dikesan</span></li>
+        </ul>
+        <div class="panel-head" data-i="latest_changes">PERUBAHAN TERKINI</div>
+        <ul class="feed" id="change-feed"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- HISTORY -->
+  <section class="view" id="view-history">
+    <div class="panel">
+      <div class="panel-head">
+        <span data-i="history_title">REKOD SESI</span>
+        <select id="history-session" class="input"></select>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr>
+            <th data-i="th_time">Masa</th><th data-i="th_target">Sasaran</th>
+            <th data-i="th_change">Perubahan</th><th data-i="th_conf">Keyakinan</th><th>BBOX</th>
+          </tr></thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- REPORT -->
+  <section class="view" id="view-report">
+    <div class="report-grid">
+      <div class="panel">
+        <div class="panel-head" data-i="report_title">LAPORAN SESI</div>
+        <pre class="report" id="report-text">—</pre>
+      </div>
+      <div class="panel">
+        <div class="panel-head" data-i="export">EKSPORT</div>
+        <select id="report-session" class="input wide"></select>
+        <button class="btn primary wide" id="btn-pdf">PDF</button>
+        <button class="btn wide" id="btn-csv">CSV</button>
+        <p class="hint" data-i="report_hint">Fail disimpan terus ke tablet melalui pelayar — tiada internet diperlukan.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------- SETTINGS -->
+  <section class="view" id="view-settings">
+    <form class="settings-grid" id="settings-form">
+      <div class="panel">
+        <div class="panel-head" data-i="s_camera">KAMERA</div>
+        <label><span data-i="s_res">Resolusi</span>
+          <select name="resolution" class="input">
+            <option value="640x360">640 × 360</option>
+            <option value="960x540">960 × 540</option>
+            <option value="1280x720">1280 × 720</option>
+            <option value="1920x1080">1920 × 1080</option>
+          </select>
+        </label>
+        <label><span data-i="s_fps">Kadar bingkai (fps)</span>
+          <input class="input" type="number" name="frame_rate" min="1" max="30"/></label>
+      </div>
+      <div class="panel">
+        <div class="panel-head" data-i="s_ai">PENGESANAN AI</div>
+        <label><span data-i="s_conf">Ambang keyakinan</span>
+          <input class="input" type="number" step="0.05" min="0.05" max="0.99" name="detection_confidence"/></label>
+        <label><span data-i="s_sens">Kepekaan perubahan</span>
+          <input class="input" type="number" step="0.05" min="0.05" max="0.99" name="change_sensitivity"/></label>
+      </div>
+      <div class="panel">
+        <div class="panel-head" data-i="s_net">RANGKAIAN &amp; STORAN</div>
+        <label><span>Wi-Fi SSID</span><input class="input" name="wifi_ssid"/></label>
+        <label><span data-i="s_chan">Saluran Wi-Fi</span>
+          <input class="input" type="number" name="wifi_channel" min="1" max="13"/></label>
+        <label><span data-i="s_store">Had storan (MB)</span>
+          <input class="input" type="number" name="storage_limit_mb" min="128" max="65536"/></label>
+      </div>
+      <div class="panel">
+        <div class="panel-head" data-i="s_power">KUASA &amp; SESI</div>
+        <label class="check"><input type="checkbox" name="battery_monitoring"/>
+          <span data-i="s_batt">Pantau bateri</span></label>
+        <button class="btn primary wide" type="submit" data-i="s_save">SIMPAN</button>
+        <p class="hint" id="settings-hint"></p>
+      </div>
+    </form>
+  </section>
+</main>
+
+<script src="/js/i18n.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

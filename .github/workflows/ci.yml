@@ -112,3 +112,41 @@ jobs:
           curl -fsS http://localhost:8080/api/status | head -c 200
           echo
           kill $SERVER_PID
+
+  atovcd:
+    name: Smoke-test ATOVCD console
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Syntax check console JS
+        run: |
+          for f in atovcd/web/js/*.js; do echo "--> $f"; node --check "$f"; done
+      - name: Install dependencies
+        run: pip install -r atovcd/requirements.txt
+      - name: Byte-compile server
+        run: python -m compileall -q atovcd/app
+      - name: Start server and smoke test every endpoint
+        run: |
+          cd atovcd
+          python -m uvicorn app.main:app --port 8000 &
+          SERVER_PID=$!
+          for i in $(seq 1 20); do curl -fsS http://localhost:8000/api/status >/dev/null && break; sleep 1; done
+          curl -fsS http://localhost:8000/ > /dev/null
+          curl -fsS http://localhost:8000/api/status | head -c 200; echo
+          curl -fsS -X POST http://localhost:8000/api/session/start
+          sleep 3
+          curl -fsS "http://localhost:8000/api/history?limit=5" > /dev/null
+          curl -fsS "http://localhost:8000/api/report?format=text" | head -8
+          curl -fsS "http://localhost:8000/api/report?format=csv" > /dev/null
+          curl -fsS "http://localhost:8000/api/report?format=pdf" -o report.pdf
+          head -c 8 report.pdf | grep -q '%PDF'
+          curl -fsS http://localhost:8000/api/snapshot.jpg -o frame.jpg
+          test -s frame.jpg
+          curl -fsS -X PUT http://localhost:8000/api/settings \
+            -H 'Content-Type: application/json' -d '{"frame_rate":8}' | grep -q '"frame_rate":8'
+          curl -fsS -X POST http://localhost:8000/api/session/stop
+          kill $SERVER_PID

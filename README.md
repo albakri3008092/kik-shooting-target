@@ -68,6 +68,7 @@ kik-shooting-target/
 ├── dashboard/
 │   └── src/                 HTML/JS/CSS/icons served from LittleFS
 ├── simulator/               Node.js server mimicking the central receiver (browser preview, no hardware)
+├── atovcd/                  ATOVCD tablet operator console (FastAPI + HTML/CSS/JS, Raspberry Pi)
 ├── docs/
 │   ├── SETUP_MY.md          Full step-by-step in Bahasa Malaysia (the original PDF, re-typed)
 │   ├── SETUP_EN.md          English translation
@@ -85,6 +86,21 @@ npm install
 npm start
 # open http://localhost:8080
 ```
+
+## ATOVCD tablet console (Raspberry Pi)
+
+Separate track from the ESP32 targets: a helmet camera + Raspberry Pi 5 (AI HAT+)
+watching targets for **visual changes**, with the tablet acting as a browser-only
+operator console over local Wi-Fi.
+
+```bash
+cd atovcd
+pip install -r requirements.txt
+./run.sh   # http://localhost:8000/  (LIVE / CHANGE MAP / HISTORY / REPORT / SETTINGS)
+```
+
+Runs with synthetic camera frames when no camera is attached — full guide in
+[atovcd/README.md](atovcd/README.md).
 
 ## Flashing (with hardware)
 

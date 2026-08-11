@@ -6,3 +6,7 @@ simulator/data/
 build/
 .vscode/
 .idea/
+atovcd/data/
+atovcd/.venv/
+__pycache__/
+*.pyc
